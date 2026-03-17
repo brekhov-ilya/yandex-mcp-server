@@ -1,0 +1,33 @@
+{
+  "name": "yandex-tracker-mcp",
+  "author": "Brekhov Ilya",
+  "version": "1.0.3",
+  "description": "Read-only MCP server for Yandex Tracker API",
+  "main": "dist/index.js",
+  "bin": {
+    "yandex-tracker-mcp": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "yandex",
+    "tracker",
+    "yandex-tracker",
+    "model-context-protocol"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.0"
+  }
+}
