@@ -127,3 +127,81 @@ export interface AuthConfig {
   clientId: string;
   forceAuth: boolean;
 }
+
+export interface CreateIssueParams {
+  queue: string;
+  summary: string;
+  description?: string;
+  type?: string;
+  priority?: string;
+  assignee?: string;
+  parent?: string;
+  tags?: string[];
+  followers?: string[];
+}
+
+export interface UpdateIssueParams {
+  summary?: string;
+  description?: string;
+  type?: string;
+  priority?: string;
+  assignee?: string;
+  parent?: string;
+  tags?: string[];
+  followers?: string[];
+}
+
+export interface TrackerResolution {
+  self: string;
+  id: string;
+  key: string;
+  display: string;
+}
+
+export interface TrackerQueueFull {
+  self: string;
+  id: string;
+  key: string;
+  name: string;
+  description?: string;
+  lead: TrackerUser;
+  defaultType: TrackerIssueType;
+  defaultPriority: TrackerPriority;
+  [key: string]: unknown;
+}
+
+export interface TrackerField {
+  self: string;
+  id: string;
+  key: string;
+  name: string;
+  type: string;
+  description?: string;
+  [key: string]: unknown;
+}
+
+export interface TrackerEntity {
+  self: string;
+  id: string;
+  shortId: number;
+  entityType: string;
+  fields: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface TrackerTransition {
+  id: string;
+  self: string;
+  display: string;
+  to: TrackerStatus;
+  [key: string]: unknown;
+}
+
+export interface TrackerChecklistItem {
+  id: string;
+  text: string;
+  checked: boolean;
+  assignee?: TrackerUser;
+  deadline?: string;
+  [key: string]: unknown;
+}

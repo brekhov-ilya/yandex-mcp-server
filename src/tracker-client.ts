@@ -4,6 +4,17 @@ import type {
   TrackerComment,
   TrackerAttachment,
   TrackerLink,
+  TrackerStatus,
+  TrackerIssueType,
+  TrackerResolution,
+  TrackerPriority,
+  TrackerQueueFull,
+  TrackerField,
+  TrackerEntity,
+  TrackerChecklistItem,
+  TrackerTransition,
+  CreateIssueParams,
+  UpdateIssueParams,
 } from "./types.js";
 
 const BASE_URL = "https://api.tracker.yandex.net";
@@ -128,6 +139,91 @@ export class TrackerClient {
     return this.request<TrackerLink[]>(
       "GET",
       `/v2/issues/${encodeURIComponent(issueKey)}/links`,
+    );
+  }
+
+  async createIssue(params: CreateIssueParams): Promise<TrackerIssue> {
+    return this.request<TrackerIssue>("POST", "/v2/issues", params);
+  }
+
+  async updateIssue(
+    issueKey: string,
+    params: UpdateIssueParams,
+  ): Promise<TrackerIssue> {
+    return this.request<TrackerIssue>(
+      "PATCH",
+      `/v2/issues/${encodeURIComponent(issueKey)}`,
+      params,
+    );
+  }
+
+  async getStatuses(): Promise<TrackerStatus[]> {
+    return this.request<TrackerStatus[]>("GET", "/v2/statuses");
+  }
+
+  async getIssueTypes(): Promise<TrackerIssueType[]> {
+    return this.request<TrackerIssueType[]>("GET", "/v2/issuetypes");
+  }
+
+  async getResolutions(): Promise<TrackerResolution[]> {
+    return this.request<TrackerResolution[]>("GET", "/v2/resolutions");
+  }
+
+  async getPriorities(): Promise<TrackerPriority[]> {
+    return this.request<TrackerPriority[]>("GET", "/v2/priorities");
+  }
+
+  async getQueues(page: number = 1, perPage: number = 50): Promise<TrackerQueueFull[]> {
+    return this.request<TrackerQueueFull[]>(
+      "GET",
+      `/v2/queues?page=${page}&perPage=${perPage}`,
+    );
+  }
+
+  async getEntity(
+    entityType: string,
+    entityId: string,
+  ): Promise<TrackerEntity> {
+    return this.request<TrackerEntity>(
+      "GET",
+      `/v2/entities/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}?fields=summary,description,author,lead,teamUsers,start,end,status`,
+    );
+  }
+
+  async getQueueLocalFields(queueKey: string): Promise<TrackerField[]> {
+    return this.request<TrackerField[]>(
+      "GET",
+      `/v2/queues/${encodeURIComponent(queueKey)}/localFields`,
+    );
+  }
+
+  async getGlobalFields(): Promise<TrackerField[]> {
+    return this.request<TrackerField[]>("GET", "/v2/fields");
+  }
+
+  async getTransitions(issueKey: string): Promise<TrackerTransition[]> {
+    return this.request<TrackerTransition[]>(
+      "GET",
+      `/v2/issues/${encodeURIComponent(issueKey)}/transitions`,
+    );
+  }
+
+  async executeTransition(
+    issueKey: string,
+    transitionId: string,
+    fields?: Record<string, unknown>,
+  ): Promise<TrackerTransition[]> {
+    return this.request<TrackerTransition[]>(
+      "POST",
+      `/v2/issues/${encodeURIComponent(issueKey)}/transitions/${encodeURIComponent(transitionId)}/_execute`,
+      fields,
+    );
+  }
+
+  async getChecklist(issueKey: string): Promise<TrackerChecklistItem[]> {
+    return this.request<TrackerChecklistItem[]>(
+      "GET",
+      `/v2/issues/${encodeURIComponent(issueKey)}/checklistItems`,
     );
   }
 }

@@ -1,6 +1,6 @@
 # yandex-tracker-mcp
 
-Read-only MCP-сервер для [Yandex Tracker](https://tracker.yandex.ru/) API. Позволяет AI-ассистентам (Claude Desktop, Claude Code, Cursor, ChatGPT и др.) искать и читать задачи, комментарии, вложения и связи из вашей организации в Yandex Tracker.
+MCP-сервер для [Yandex Tracker](https://tracker.yandex.ru/) API. Позволяет AI-ассистентам (Claude Desktop, Claude Code, Cursor, ChatGPT и др.) искать, читать, создавать и редактировать задачи, а также работать с комментариями, вложениями и связями в Yandex Tracker.
 
 ## Установка и использование
 
@@ -88,10 +88,23 @@ codex mcp add yandex-tracker -- npx -y yandex-tracker-mcp --org-id YOUR_ORG_ID
 |------------|----------|
 | `get_issue` | Получить задачу по ключу (например `QUEUE-123`) |
 | `search_issues` | Поиск задач на языке запросов Трекера (например `Queue: MYQUEUE AND Status: Open`) |
+| `create_issue` | Создать новую задачу (очередь, название, описание, тип, приоритет, исполнитель и др.) |
+| `update_issue` | Изменить существующую задачу (название, описание, приоритет, исполнитель и др.) |
+| `get_transitions` | Получить доступные переходы статуса для задачи |
+| `transition_issue` | Перевести задачу в другой статус (выполнить переход) |
 | `get_comments` | Получить все комментарии к задаче |
 | `get_attachments` | Получить метаданные вложений (имя, размер, MIME-тип, id) |
 | `download_attachment` | Скачать вложение в base64. Изображения возвращаются как image-блоки |
 | `get_issue_links` | Получить все связи задачи |
+| `get_checklist` | Получить чеклист задачи |
+| `get_statuses` | Получить список всех статусов |
+| `get_issue_types` | Получить список типов задач (задача, баг, история и т.д.) |
+| `get_resolutions` | Получить список резолюций |
+| `get_priorities` | Получить список приоритетов |
+| `get_queues` | Получить список очередей |
+| `get_queue_local_fields` | Получить локальные (кастомные) поля очереди |
+| `get_global_fields` | Получить глобальные (системные) поля |
+| `get_entity` | Получить параметры сущности (проект, портфель) по типу и ID |
 
 ## Лицензия
 

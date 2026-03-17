@@ -8,6 +8,9 @@ import { registerIssueTools } from "./tools/issues.js";
 import { registerCommentTools } from "./tools/comments.js";
 import { registerAttachmentTools } from "./tools/attachments.js";
 import { registerLinkTools } from "./tools/links.js";
+import { registerMetaTools } from "./tools/meta.js";
+import { registerEntityTools } from "./tools/entities.js";
+import { registerChecklistTools } from "./tools/checklists.js";
 
 const DEFAULT_CLIENT_ID = "f5d1542673544cb7aab999dbcf98fe2e";
 
@@ -70,6 +73,9 @@ async function main(): Promise<void> {
   registerCommentTools(server, client);
   registerAttachmentTools(server, client);
   registerLinkTools(server, client);
+  registerMetaTools(server, client);
+  registerEntityTools(server, client);
+  registerChecklistTools(server, client);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
