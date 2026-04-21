@@ -3,9 +3,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { randomUUID } from "node:crypto";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import { TrackerClient } from "./tracker-client.js";
 import { resolveToken } from "./auth.js";
 import { registerIssueTools } from "./tools/issues.js";
@@ -63,7 +65,9 @@ function parseArgs(): CliArgs {
     } else if (args[i] === "--port" && args[i + 1]) {
       port = parseInt(args[++i], 10);
       if (Number.isNaN(port) || port < 1 || port > 65535) {
-        process.stderr.write("Error: --port must be a valid port number (1-65535).\n");
+        process.stderr.write(
+          "Error: --port must be a valid port number (1-65535).\n",
+        );
         process.exit(1);
       }
     } else if (args[i] === "--host" && args[i + 1]) {
@@ -73,7 +77,16 @@ function parseArgs(): CliArgs {
     }
   }
 
-  return { orgId, cloudOrgId, clientId, forceAuth, transport, port, host, token };
+  return {
+    orgId,
+    cloudOrgId,
+    clientId,
+    forceAuth,
+    transport,
+    port,
+    host,
+    token,
+  };
 }
 
 function createConfiguredServer(client: TrackerClient): McpServer {
@@ -93,13 +106,15 @@ function createConfiguredServer(client: TrackerClient): McpServer {
   return server;
 }
 
-function parseJsonBody(req: IncomingMessage): Promise<unknown> {
+async function parseJsonBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     req.on("data", (chunk: Buffer) => chunks.push(chunk));
     req.on("end", () => {
       try {
-        const body: unknown = JSON.parse(Buffer.concat(chunks).toString("utf-8"));
+        const body: unknown = JSON.parse(
+          Buffer.concat(chunks).toString("utf-8"),
+        );
         resolve(body);
       } catch {
         reject(new Error("Invalid JSON body"));
@@ -109,140 +124,111 @@ function parseJsonBody(req: IncomingMessage): Promise<unknown> {
   });
 }
 
-function extractTokenFromHeader(req: IncomingMessage): string | undefined {
-  const auth = req.headers["authorization"];
-  if (!auth) return undefined;
-  const match = /^(?:OAuth|Bearer)\s+(.+)$/i.exec(auth);
-  return match?.[1];
-}
-
-function extractOrgHeaders(req: IncomingMessage): { orgId?: string; cloudOrgId?: string } {
-  const orgId = req.headers["x-org-id"] as string | undefined;
-  const cloudOrgId = req.headers["x-cloud-org-id"] as string | undefined;
-  return { orgId, cloudOrgId };
-}
-
-function sendJsonError(res: ServerResponse, status: number, code: number, message: string): void {
+function sendJsonError(
+  res: ServerResponse,
+  status: number,
+  code: number,
+  message: string,
+): void {
   res.writeHead(status, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ jsonrpc: "2.0", error: { code, message }, id: null }));
+  res.end(
+    JSON.stringify({ jsonrpc: "2.0", error: { code, message }, id: null }),
+  );
 }
 
-async function startHttpServer(port: number, host: string): Promise<void> {
-  const transports = new Map<string, StreamableHTTPServerTransport>();
+async function handleMcpRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  transport: StreamableHTTPServerTransport,
+): Promise<void> {
+  const parsedUrl = new URL(
+    req.url ?? "/",
+    `http://${req.headers.host ?? "localhost"}`,
+  );
+  if (parsedUrl.pathname !== "/mcp") {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Not found" }));
+    return;
+  }
 
-  const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-    if (req.url !== "/mcp") {
-      res.writeHead(404, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Not found" }));
+  const method = req.method?.toUpperCase();
+
+  if (method === "POST") {
+    let body: unknown;
+    try {
+      body = await parseJsonBody(req);
+    } catch {
+      sendJsonError(res, 400, -32700, "Parse error");
       return;
     }
+    await transport.handleRequest(req, res, body);
+  } else if (method === "GET") {
+    await transport.handleRequest(req, res);
+  } else if (method === "DELETE") {
+    await transport.handleRequest(req, res);
+  } else {
+    res.writeHead(405, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Method not allowed" }));
+  }
+}
 
-    const method = req.method?.toUpperCase();
-
-    if (method === "POST") {
-      let body: unknown;
-      try {
-        body = await parseJsonBody(req);
-      } catch {
-        sendJsonError(res, 400, -32700, "Parse error");
-        return;
-      }
-
-      const sessionId = req.headers["mcp-session-id"] as string | undefined;
-
-      if (sessionId && transports.has(sessionId)) {
-        const transport = transports.get(sessionId)!;
-        await transport.handleRequest(req, res, body);
-        return;
-      }
-
-      if (!sessionId && isInitializeRequest(body)) {
-        const token = extractTokenFromHeader(req);
-        if (!token) {
-          sendJsonError(res, 401, -32001, "Missing Authorization header. Use: Authorization: OAuth <token> or Bearer <token>");
-          return;
-        }
-
-        const { orgId, cloudOrgId } = extractOrgHeaders(req);
-        if (!orgId && !cloudOrgId) {
-          sendJsonError(res, 400, -32002, "Missing organization header. Provide x-org-id or x-cloud-org-id");
-          return;
-        }
-        if (orgId && cloudOrgId) {
-          sendJsonError(res, 400, -32002, "Provide either x-org-id or x-cloud-org-id, not both");
-          return;
-        }
-
-        const client = new TrackerClient({ token, orgId, cloudOrgId });
-
-        const transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: () => randomUUID(),
-          onsessioninitialized: (newSessionId: string) => {
-            transports.set(newSessionId, transport);
-          },
-        });
-
-        transport.onclose = () => {
-          const sid = transport.sessionId;
-          if (sid) {
-            transports.delete(sid);
-          }
-        };
-
-        const server = createConfiguredServer(client);
-        await server.connect(transport);
-        await transport.handleRequest(req, res, body);
-        return;
-      }
-
-      sendJsonError(res, 400, -32000, "Bad request: no valid session ID or not an initialization request");
-    } else if (method === "GET") {
-      const sessionId = req.headers["mcp-session-id"] as string | undefined;
-      if (!sessionId || !transports.has(sessionId)) {
-        sendJsonError(res, 400, -32000, "Bad request: missing or invalid session ID");
-        return;
-      }
-      const transport = transports.get(sessionId)!;
-      await transport.handleRequest(req, res);
-    } else if (method === "DELETE") {
-      const sessionId = req.headers["mcp-session-id"] as string | undefined;
-      if (!sessionId || !transports.has(sessionId)) {
-        sendJsonError(res, 400, -32000, "Bad request: missing or invalid session ID");
-        return;
-      }
-      const transport = transports.get(sessionId)!;
-      await transport.handleRequest(req, res);
-      transports.delete(sessionId);
-    } else {
-      res.writeHead(405, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Method not allowed" }));
-    }
+async function startHttpServer(
+  client: TrackerClient,
+  port: number,
+  host: string,
+): Promise<void> {
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
   });
 
+  const server = createConfiguredServer(client);
+  await server.connect(transport);
+
+  const httpServer = createServer(
+    (req: IncomingMessage, res: ServerResponse) => {
+      handleMcpRequest(req, res, transport).catch((err: unknown) => {
+        process.stderr.write(
+          `Unhandled error: ${err instanceof Error ? err.message : String(err)}\n`,
+        );
+        if (!res.headersSent) {
+          sendJsonError(res, 500, -32603, "Internal server error");
+        }
+      });
+    },
+  );
+
   httpServer.listen(port, host, () => {
-    process.stderr.write(`MCP HTTP server listening on http://${host}:${port}/mcp\n`);
+    process.stderr.write(
+      `MCP HTTP server listening on http://${host}:${port}/mcp\n`,
+    );
   });
 }
 
 async function main(): Promise<void> {
-  const { orgId, cloudOrgId, clientId, forceAuth, transport, port, host, token: cliToken } = parseArgs();
+  const {
+    orgId: cliOrgId,
+    cloudOrgId: cliCloudOrgId,
+    clientId,
+    forceAuth,
+    transport,
+    port,
+    host,
+    token: cliToken,
+  } = parseArgs();
 
-  if (transport === "http") {
-    await startHttpServer(port, host);
-    return;
-  }
+  const orgId = cliOrgId ?? process.env.TRACKER_ORG_ID;
+  const cloudOrgId = cliCloudOrgId ?? process.env.TRACKER_CLOUD_ORG_ID;
 
-  // stdio mode — требуем org-id и токен при запуске
   if (orgId && cloudOrgId) {
     process.stderr.write(
-      "Error: Specify either --org-id or --cloud-org-id, not both.\n",
+      "Error: Specify either --org-id / TRACKER_ORG_ID or --cloud-org-id / TRACKER_CLOUD_ORG_ID, not both.\n",
     );
     process.exit(1);
   }
 
   if (!orgId && !cloudOrgId) {
     process.stderr.write(
-      "Error: You must specify either --org-id <value> or --cloud-org-id <value>.\n",
+      "Error: You must specify either --org-id <value> / TRACKER_ORG_ID or --cloud-org-id <value> / TRACKER_CLOUD_ORG_ID.\n",
     );
     process.exit(1);
   }
@@ -255,9 +241,14 @@ async function main(): Promise<void> {
   }
 
   const client = new TrackerClient({ token, orgId, cloudOrgId });
-  const server = createConfiguredServer(client);
-  const stdioTransport = new StdioServerTransport();
-  await server.connect(stdioTransport);
+
+  if (transport === "http") {
+    await startHttpServer(client, port, host);
+  } else {
+    const server = createConfiguredServer(client);
+    const stdioTransport = new StdioServerTransport();
+    await server.connect(stdioTransport);
+  }
 }
 
 main().catch((error: unknown) => {

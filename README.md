@@ -1,86 +1,90 @@
 # yandex-tracker-mcp
 
-MCP-сервер для [Yandex Tracker](https://tracker.yandex.ru/) API. Позволяет AI-ассистентам (Claude Desktop, Claude Code, Cursor, ChatGPT и др.) искать, читать, создавать и редактировать задачи, а также работать с комментариями, вложениями и связями в Yandex Tracker.
+MCP-сервер для [Yandex Tracker](https://tracker.yandex.ru/) API. Позволяет AI-ассистентам (Claude Code и совместимые клиенты) искать, читать, создавать и редактировать задачи, а также работать с комментариями, вложениями и связями в Yandex Tracker.
 
-## Установка и использование
+## Установка в проект через `.mcp.json`
 
-> **Важно:** Во всех примерах ниже используется `--org-id`. Выберите правильный флаг в зависимости от типа вашей организации:
-> - `--org-id` — если Трекер привязан к организации **Яндекс 360 для бизнеса**
-> - `--cloud-org-id` — если Трекер привязан к организации **Yandex Cloud Organization**
->
-> Необходимо указать ровно один из двух.
+Сервер подключается к **конкретному проекту Claude Code** через файл `.mcp.json` в корне проекта. Секреты (OAuth-токен, ID организации) прокидываются через блок `env` из переменных окружения разработчика — поэтому сам `.mcp.json` можно безопасно коммитить в репозиторий.
 
-### Claude Desktop
+### Шаг 1. Получите OAuth-токен и ID организации
 
-Добавьте в `claude_desktop_config.json`:
+Откройте `https://tracker.yandex.ru/` и определите тип организации:
+
+- **Яндекс 360 для бизнеса** — нужен `org-id` (узнать: `https://admin.yandex.ru/` → «Об организации»)
+- **Yandex Cloud Organization** — нужен `cloud-org-id` (узнать: `https://console.yandex.cloud/` → «Все организации»)
+
+Для получения OAuth-токена запустите один раз локально — откроется браузер с авторизацией, токен сохранится в `~/.config/yandex-tracker-mcp/token.json`:
+
+```bash
+npx -y yandex-tracker-mcp --org-id YOUR_ORG_ID --auth
+# или
+npx -y yandex-tracker-mcp --cloud-org-id YOUR_CLOUD_ORG_ID --auth
+```
+
+Затем скопируйте `access_token` из `~/.config/yandex-tracker-mcp/token.json`. Альтернатива — выпустить собственный OAuth-клиент на [oauth.yandex.ru](https://oauth.yandex.ru/) и получить токен вручную.
+
+### Шаг 2. Экспортируйте переменные окружения
+
+Добавьте в `~/.zshrc` / `~/.bashrc`:
+
+```bash
+export TRACKER_OAUTH_TOKEN="y0_xxx..."
+export TRACKER_ORG_ID="1234567"
+# либо, для Yandex Cloud Organization:
+# export TRACKER_CLOUD_ORG_ID="abc-xyz"
+```
+
+Перезапустите терминал или выполните `source ~/.zshrc`.
+
+### Шаг 3. Создайте `.mcp.json` в корне проекта
 
 ```json
 {
   "mcpServers": {
     "yandex-tracker": {
       "command": "npx",
-      "args": ["-y", "yandex-tracker-mcp", "--org-id", "YOUR_ORG_ID"]
+      "args": ["-y", "yandex-tracker-mcp"],
+      "env": {
+        "TRACKER_OAUTH_TOKEN": "${TRACKER_OAUTH_TOKEN}",
+        "TRACKER_ORG_ID": "${TRACKER_ORG_ID}"
+      }
     }
   }
 }
 ```
 
-Для организаций Yandex Cloud используйте `--cloud-org-id` вместо `--org-id`:
+Для Yandex Cloud Organization замените `TRACKER_ORG_ID` на `TRACKER_CLOUD_ORG_ID` в обоих местах:
 
 ```json
 {
   "mcpServers": {
     "yandex-tracker": {
       "command": "npx",
-      "args": ["-y", "yandex-tracker-mcp", "--cloud-org-id", "YOUR_CLOUD_ORG_ID"]
+      "args": ["-y", "yandex-tracker-mcp"],
+      "env": {
+        "TRACKER_OAUTH_TOKEN": "${TRACKER_OAUTH_TOKEN}",
+        "TRACKER_CLOUD_ORG_ID": "${TRACKER_CLOUD_ORG_ID}"
+      }
     }
   }
 }
 ```
 
-### Claude Code
+`.mcp.json` **можно коммитить**: файл содержит только имена переменных, а реальные значения подставляются из окружения каждого разработчика.
 
-```bash
-claude mcp add --scope user yandex-tracker -- npx -y yandex-tracker-mcp --org-id YOUR_ORG_ID
-```
+### Шаг 4. Активируйте сервер в Claude Code
 
-Для организаций Yandex Cloud:
+Запустите `claude` в корне проекта. При первом старте Claude Code попросит одобрить project-scoped MCP-серверы — подтвердите. Проверить статус можно командой `/mcp` внутри сессии.
 
-```bash
-claude mcp add --scope user yandex-tracker -- npx -y yandex-tracker-mcp --cloud-org-id YOUR_CLOUD_ORG_ID
-```
+## Переменные окружения
 
-### Cursor
+| Переменная | Назначение |
+|---|---|
+| `TRACKER_OAUTH_TOKEN` | OAuth-токен Yandex для доступа к Tracker API |
+| `TRACKER_ORG_ID` | ID организации Яндекс 360 для бизнеса (заголовок `X-Org-ID`) |
+| `TRACKER_CLOUD_ORG_ID` | ID Yandex Cloud Organization (заголовок `X-Cloud-Org-ID`) |
 
-[![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/install-mcp?name=yandex-tracker&config=eyJjb21tYW5kIjoibnB4IC15IHlhbmRleC10cmFja2VyLW1jcCAtLW9yZy1pZCBZT1VSX09SR19JRCJ9)
-
-Или откройте Cursor Settings → MCP → Add new MCP server, или добавьте в `~/.cursor/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "yandex-tracker": {
-      "command": "npx",
-      "args": ["-y", "yandex-tracker-mcp", "--org-id", "YOUR_ORG_ID"]
-    }
-  }
-}
-```
-
-### Codex
-
-```bash
-codex mcp add yandex-tracker -- npx -y yandex-tracker-mcp --org-id YOUR_ORG_ID
-```
-
-## Конфигурация
-
-| Параметр | Описание |
-|----------|----------|
-| `--org-id <value>` | Идентификатор организации Яндекс 360 для бизнеса (заголовок `X-Org-ID`) |
-| `--cloud-org-id <value>` | Идентификатор организации Yandex Cloud (заголовок `X-Cloud-Org-ID`) |
-
-Необходимо указать ровно один из двух. При первом запуске сервер автоматически откроет браузер для авторизации через Yandex OAuth.
+Указывайте ровно один из `TRACKER_ORG_ID` / `TRACKER_CLOUD_ORG_ID` — в зависимости от типа вашей организации.
 
 ## Доступные инструменты
 
