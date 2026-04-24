@@ -89,13 +89,20 @@ function parseArgs(): CliArgs {
   };
 }
 
-function createConfiguredServer(client: TrackerClient): McpServer {
+interface ServerConfig {
+  defaultAssignee?: string;
+}
+
+function createConfiguredServer(
+  client: TrackerClient,
+  config: ServerConfig = {},
+): McpServer {
   const server = new McpServer({
     name: "yandex-tracker-mcp",
     version: "1.0.0",
   });
 
-  registerIssueTools(server, client);
+  registerIssueTools(server, client, { defaultAssignee: config.defaultAssignee });
   registerCommentTools(server, client);
   registerAttachmentTools(server, client);
   registerLinkTools(server, client);
@@ -176,12 +183,13 @@ async function startHttpServer(
   client: TrackerClient,
   port: number,
   host: string,
+  config: ServerConfig,
 ): Promise<void> {
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
   });
 
-  const server = createConfiguredServer(client);
+  const server = createConfiguredServer(client, config);
   await server.connect(transport);
 
   const httpServer = createServer(
@@ -249,10 +257,13 @@ async function main(): Promise<void> {
 
   const client = new TrackerClient({ token, orgId, cloudOrgId });
 
+  const defaultAssignee = process.env.TRACKER_USERNAME?.trim() || undefined;
+  const serverConfig: ServerConfig = { defaultAssignee };
+
   if (transport === "http") {
-    await startHttpServer(client, port, host);
+    await startHttpServer(client, port, host, serverConfig);
   } else {
-    const server = createConfiguredServer(client);
+    const server = createConfiguredServer(client, serverConfig);
     const stdioTransport = new StdioServerTransport();
     await server.connect(stdioTransport);
   }

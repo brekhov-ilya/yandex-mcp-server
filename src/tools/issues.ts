@@ -2,10 +2,16 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { TrackerClient } from "../tracker-client.js";
 
+export interface IssueToolsOptions {
+  defaultAssignee?: string;
+}
+
 export function registerIssueTools(
   server: McpServer,
   client: TrackerClient,
+  options: IssueToolsOptions = {},
 ): void {
+  const { defaultAssignee } = options;
   server.registerTool(
     "get_issue",
     {
@@ -27,11 +33,20 @@ export function registerIssueTools(
     "search_issues",
     {
       description:
-        "Search Yandex Tracker issues using query language (e.g. 'Queue: MYQUEUE AND Status: Open')",
+        "Search Yandex Tracker issues using query language (e.g. 'Queue: MYQUEUE AND Status: Open'). " +
+        "By default filters by the assignee configured in TRACKER_USERNAME. " +
+        "Pass `assignee` with a full name (e.g. 'Ivan Ivanov') to filter by someone else. " +
+        "If the query already contains an Assignee clause, no default filter is added.",
       inputSchema: z.object({
         query: z
           .string()
           .describe("Search query in Yandex Tracker query language"),
+        assignee: z
+          .string()
+          .optional()
+          .describe(
+            "Full name of the assignee (e.g. 'Ivan Ivanov'). Overrides TRACKER_USERNAME for this call. Ignored if `query` already contains 'Assignee:'.",
+          ),
         page: z
           .number()
           .optional()
@@ -44,9 +59,15 @@ export function registerIssueTools(
           .describe("Results per page (default: 50, max: 100)"),
       }),
     },
-    async ({ query, page, perPage }) => {
+    async ({ query, assignee, page, perPage }) => {
       const clampedPerPage = Math.min(perPage, 100);
-      const issues = await client.searchIssues(query, page, clampedPerPage);
+      const assigneeFilter = assignee ?? defaultAssignee;
+      const queryHasAssignee = /\bassignee\s*:/i.test(query);
+      const finalQuery =
+        assigneeFilter && !queryHasAssignee
+          ? `${query} AND Assignee: "${assigneeFilter.replace(/"/g, '\\"')}"`
+          : query;
+      const issues = await client.searchIssues(finalQuery, page, clampedPerPage);
       const summary = issues.map((issue) => ({
         key: issue.key,
         summary: issue.summary,

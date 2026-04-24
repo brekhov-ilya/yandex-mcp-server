@@ -4,7 +4,7 @@ MCP-сервер для [Yandex Tracker](https://tracker.yandex.ru/) API. Поз
 
 ## Установка в проект через `.mcp.json`
 
-Сервер подключается к **конкретному проекту Claude Code** через файл `.mcp.json` в корне проекта. Секреты (OAuth-токен, ID организации) прокидываются через блок `env` из переменных окружения разработчика — поэтому сам `.mcp.json` можно безопасно коммитить в репозиторий.
+Сервер подключается к **конкретному проекту Claude Code** через файл `.mcp.json` в корне проекта. OAuth-токен хранится локально в `~/.config/yandex-tracker-mcp/token.json` и подхватывается автоматически — в `.mcp.json` указывается только ID организации.
 
 ### Шаг 1. Получите OAuth-токен и ID организации
 
@@ -23,22 +23,11 @@ npx -y yandex-tracker-mcp --cloud-org-id YOUR_CLOUD_ORG_ID --auth
 
 CLI использует встроенное OAuth-приложение `yandex-tracker-mcp` и проходит авторизацию по [PKCE (RFC 7636)](https://datatracker.ietf.org/doc/html/rfc7636) — без `client_secret`. Если вы хотите использовать собственное OAuth-приложение (корпоративная политика, отдельное логирование и т. п.), зарегистрируйте его на [oauth.yandex.ru](https://oauth.yandex.ru/) с Redirect URI `http://localhost:27311/callback` и правами `tracker:read`, `tracker:write`, после чего передайте `--client-id YOUR_APP_ID`.
 
-Затем скопируйте `access_token` из `~/.config/yandex-tracker-mcp/token.json`.
+Токен автоматически сохраняется в `~/.config/yandex-tracker-mcp/token.json` (права `0600`) и оттуда же читается при последующих запусках — `access_token` никуда копировать не нужно. При истечении срока сервер сам обновит его через `refresh_token`.
 
-### Шаг 2. Экспортируйте переменные окружения
+### Шаг 2. Создайте `.mcp.json` в корне проекта
 
-Добавьте в `~/.zshrc` / `~/.bashrc`:
-
-```bash
-export TRACKER_OAUTH_TOKEN="y0_xxx..."
-export TRACKER_ORG_ID="1234567"
-# либо, для Yandex Cloud Organization:
-# export TRACKER_CLOUD_ORG_ID="abc-xyz"
-```
-
-Перезапустите терминал или выполните `source ~/.zshrc`.
-
-### Шаг 3. Создайте `.mcp.json` в корне проекта
+Укажите `TRACKER_ORG_ID` (для Яндекс 360 для бизнеса) и `TRACKER_USERNAME` — имя и фамилию, по которым `search_issues` будет по умолчанию фильтровать задачи:
 
 ```json
 {
@@ -47,15 +36,15 @@ export TRACKER_ORG_ID="1234567"
       "command": "npx",
       "args": ["-y", "yandex-tracker-mcp"],
       "env": {
-        "TRACKER_OAUTH_TOKEN": "${TRACKER_OAUTH_TOKEN}",
-        "TRACKER_ORG_ID": "${TRACKER_ORG_ID}"
+        "TRACKER_ORG_ID": "1234567",
+        "TRACKER_USERNAME": "Иван Иванов"
       }
     }
   }
 }
 ```
 
-Для Yandex Cloud Organization замените `TRACKER_ORG_ID` на `TRACKER_CLOUD_ORG_ID` в обоих местах:
+Для Yandex Cloud Organization используйте `TRACKER_CLOUD_ORG_ID`:
 
 ```json
 {
@@ -64,17 +53,19 @@ export TRACKER_ORG_ID="1234567"
       "command": "npx",
       "args": ["-y", "yandex-tracker-mcp"],
       "env": {
-        "TRACKER_OAUTH_TOKEN": "${TRACKER_OAUTH_TOKEN}",
-        "TRACKER_CLOUD_ORG_ID": "${TRACKER_CLOUD_ORG_ID}"
+        "TRACKER_CLOUD_ORG_ID": "abc-xyz",
+        "TRACKER_USERNAME": "Иван Иванов"
       }
     }
   }
 }
 ```
 
-`.mcp.json` **можно коммитить**: файл содержит только имена переменных, а реальные значения подставляются из окружения каждого разработчика.
+ID организации — не секрет, поэтому `.mcp.json` можно коммитить. OAuth-токен в этом файле указывать не нужно: он лежит в `~/.config/yandex-tracker-mcp/token.json` и подхватывается автоматически.
 
-### Шаг 4. Активируйте сервер в Claude Code
+**Фильтр по умолчанию.** `search_issues` автоматически добавляет к запросу `AND Assignee: "<TRACKER_USERNAME>"`. Чтобы найти задачи другого человека, скажи в промпте «найди задачи Петра Петрова» — модель передаст его имя параметром `assignee`, и фильтр по умолчанию будет заменён. Если в самом query уже есть `Assignee:`, автоподстановка пропускается.
+
+### Шаг 3. Активируйте сервер в Claude Code
 
 Запустите `claude` в корне проекта. При первом старте Claude Code попросит одобрить project-scoped MCP-серверы — подтвердите. Проверить статус можно командой `/mcp` внутри сессии.
 
@@ -82,9 +73,10 @@ export TRACKER_ORG_ID="1234567"
 
 | Переменная | Назначение |
 |---|---|
-| `TRACKER_OAUTH_TOKEN` | OAuth-токен Yandex для доступа к Tracker API |
 | `TRACKER_ORG_ID` | ID организации Яндекс 360 для бизнеса (заголовок `X-Org-ID`) |
 | `TRACKER_CLOUD_ORG_ID` | ID Yandex Cloud Organization (заголовок `X-Cloud-Org-ID`) |
+| `TRACKER_USERNAME` | Имя и фамилия для автоматического фильтра `Assignee:` в `search_issues`. Опционально |
+| `TRACKER_OAUTH_TOKEN` | Опционально. Переопределяет токен из `~/.config/yandex-tracker-mcp/token.json` |
 
 Указывайте ровно один из `TRACKER_ORG_ID` / `TRACKER_CLOUD_ORG_ID` — в зависимости от типа вашей организации.
 
