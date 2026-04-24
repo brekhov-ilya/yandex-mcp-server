@@ -240,6 +240,13 @@ async function main(): Promise<void> {
     token = await resolveToken({ clientId, forceAuth });
   }
 
+  if (forceAuth) {
+    process.stderr.write(
+      `Token is stored in ~/.config/yandex-tracker-mcp/token.json. You can now start the server without --auth.\n`,
+    );
+    return;
+  }
+
   const client = new TrackerClient({ token, orgId, cloudOrgId });
 
   if (transport === "http") {
