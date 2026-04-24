@@ -3,9 +3,9 @@ import { mkdir, readFile, writeFile, chmod } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { exec } from "node:child_process";
+import { randomBytes, createHash } from "node:crypto";
 import type { AuthConfig, TokenData, YandexTokenResponse } from "./types.js";
 
-const DEFAULT_CLIENT_SECRET = "04c61f23839042ddb10c95d3fbf7d0c8";
 const OAUTH_PORT = 27311;
 const REDIRECT_URI = `http://localhost:${OAUTH_PORT}/callback`;
 const OAUTH_AUTHORIZE_URL = "https://oauth.yandex.ru/authorize";
@@ -67,15 +67,32 @@ function toTokenData(response: YandexTokenResponse): TokenData {
   };
 }
 
+function base64UrlEncode(buffer: Buffer): string {
+  return buffer
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function generatePkcePair(): { verifier: string; challenge: string } {
+  const verifier = base64UrlEncode(randomBytes(32));
+  const challenge = base64UrlEncode(
+    createHash("sha256").update(verifier).digest(),
+  );
+  return { verifier, challenge };
+}
+
 async function exchangeCodeForToken(
   code: string,
   clientId: string,
+  codeVerifier: string,
 ): Promise<TokenData> {
   const body = new URLSearchParams({
     grant_type: "authorization_code",
     code,
     client_id: clientId,
-    client_secret: DEFAULT_CLIENT_SECRET,
+    code_verifier: codeVerifier,
     redirect_uri: REDIRECT_URI,
   });
 
@@ -102,7 +119,6 @@ async function refreshAccessToken(
     grant_type: "refresh_token",
     refresh_token: refreshToken,
     client_id: clientId,
-    client_secret: DEFAULT_CLIENT_SECRET,
   });
 
   const response = await fetch(OAUTH_TOKEN_URL, {
@@ -137,7 +153,11 @@ function openBrowser(url: string): void {
   });
 }
 
-function performOAuthFlow(clientId: string): Promise<string> {
+function performOAuthFlow(
+  clientId: string,
+): Promise<{ code: string; verifier: string }> {
+  const { verifier, challenge } = generatePkcePair();
+
   return new Promise((resolve, reject) => {
     const server = createServer((req: IncomingMessage, res: ServerResponse) => {
       const url = new URL(req.url ?? "/", `http://localhost:${OAUTH_PORT}`);
@@ -155,7 +175,7 @@ function performOAuthFlow(clientId: string): Promise<string> {
         if (error) {
           reject(new Error(`OAuth error: ${error}`));
         } else if (code) {
-          resolve(code);
+          resolve({ code, verifier });
         } else {
           reject(new Error("No authorization code received in callback"));
         }
@@ -185,7 +205,7 @@ function performOAuthFlow(clientId: string): Promise<string> {
 
     server.listen(OAUTH_PORT, () => {
       const authorizeUrl =
-        `${OAUTH_AUTHORIZE_URL}?response_type=code&client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
+        `${OAUTH_AUTHORIZE_URL}?response_type=code&client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&code_challenge=${encodeURIComponent(challenge)}&code_challenge_method=S256`;
 
       process.stderr.write("Opening browser for Yandex OAuth authorization...\n");
       process.stderr.write(`If the browser didn't open, go to:\n${authorizeUrl}\n`);
@@ -221,8 +241,8 @@ export async function resolveToken(config: AuthConfig): Promise<string> {
     }
   }
 
-  const code = await performOAuthFlow(config.clientId);
-  const tokenData = await exchangeCodeForToken(code, config.clientId);
+  const { code, verifier } = await performOAuthFlow(config.clientId);
+  const tokenData = await exchangeCodeForToken(code, config.clientId, verifier);
   await saveTokenToFile(tokenData);
   process.stderr.write("Token saved successfully.\n");
   return tokenData.access_token;

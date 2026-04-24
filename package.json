@@ -1,8 +1,8 @@
 {
   "name": "yandex-tracker-mcp",
   "author": "Brekhov Ilya",
-  "version": "1.1.0",
-  "description": "Read-only MCP server for Yandex Tracker API",
+  "version": "1.1.1",
+  "description": "MCP server for Yandex Tracker API — read and edit issues, comments, attachments, links, checklists, metadata",
   "main": "dist/index.js",
   "bin": {
     "yandex-tracker-mcp": "./dist/index.js"
@@ -21,6 +21,17 @@
     "yandex-tracker",
     "model-context-protocol"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/brekhov-ilya/yandex-mcp-server.git"
+  },
+  "bugs": {
+    "url": "https://github.com/brekhov-ilya/yandex-mcp-server/issues"
+  },
+  "homepage": "https://github.com/brekhov-ilya/yandex-mcp-server#readme",
+  "engines": {
+    "node": ">=18"
+  },
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",

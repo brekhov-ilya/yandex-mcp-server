@@ -18,7 +18,7 @@ import { registerMetaTools } from "./tools/meta.js";
 import { registerEntityTools } from "./tools/entities.js";
 import { registerChecklistTools } from "./tools/checklists.js";
 
-const DEFAULT_CLIENT_ID = "f5d1542673544cb7aab999dbcf98fe2e";
+const DEFAULT_CLIENT_ID = "74e48aa0cc7c492b8a296c5d17f2cfd7";
 const DEFAULT_HTTP_PORT = 3000;
 const DEFAULT_HTTP_HOST = "0.0.0.0";
 

@@ -21,7 +21,9 @@ npx -y yandex-tracker-mcp --org-id YOUR_ORG_ID --auth
 npx -y yandex-tracker-mcp --cloud-org-id YOUR_CLOUD_ORG_ID --auth
 ```
 
-Затем скопируйте `access_token` из `~/.config/yandex-tracker-mcp/token.json`. Альтернатива — выпустить собственный OAuth-клиент на [oauth.yandex.ru](https://oauth.yandex.ru/) и получить токен вручную.
+CLI использует встроенное OAuth-приложение `yandex-tracker-mcp` и проходит авторизацию по [PKCE (RFC 7636)](https://datatracker.ietf.org/doc/html/rfc7636) — без `client_secret`. Если вы хотите использовать собственное OAuth-приложение (корпоративная политика, отдельное логирование и т. п.), зарегистрируйте его на [oauth.yandex.ru](https://oauth.yandex.ru/) с Redirect URI `http://localhost:27311/callback` и правами `tracker:read`, `tracker:write`, после чего передайте `--client-id YOUR_APP_ID`.
+
+Затем скопируйте `access_token` из `~/.config/yandex-tracker-mcp/token.json`.
 
 ### Шаг 2. Экспортируйте переменные окружения
 
