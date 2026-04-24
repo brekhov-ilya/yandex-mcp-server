@@ -1,7 +1,7 @@
 {
   "name": "yandex-tracker-mcp",
   "author": "Brekhov Ilya",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "MCP server for Yandex Tracker API — read and edit issues, comments, attachments, links, checklists, metadata",
   "main": "dist/index.js",
   "bin": {

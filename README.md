@@ -2,9 +2,13 @@
 
 MCP-сервер для [Yandex Tracker](https://tracker.yandex.ru/) API. Позволяет AI-ассистентам (Claude Code и совместимые клиенты) искать, читать, создавать и редактировать задачи, а также работать с комментариями, вложениями и связями в Yandex Tracker.
 
-## Установка в проект через `.mcp.json`
+## Подключение
 
-Сервер подключается к **конкретному проекту Claude Code** через файл `.mcp.json` в корне проекта. OAuth-токен хранится локально в `~/.config/yandex-tracker-mcp/token.json` и подхватывается автоматически — в `.mcp.json` указывается только ID организации.
+Порядок одинаковый для любого MCP-клиента:
+
+1. Получить OAuth-токен (один раз, локально).
+2. Прописать сервер в конфиге клиента (JSON — Claude Code / Claude Desktop / Cursor, TOML — Codex).
+3. Перезапустить клиент.
 
 ### Шаг 1. Получите OAuth-токен и ID организации
 
@@ -13,7 +17,7 @@ MCP-сервер для [Yandex Tracker](https://tracker.yandex.ru/) API. Поз
 - **Яндекс 360 для бизнеса** — нужен `org-id` (узнать: `https://admin.yandex.ru/` → «Об организации»)
 - **Yandex Cloud Organization** — нужен `cloud-org-id` (узнать: `https://console.yandex.cloud/` → «Все организации»)
 
-Для получения OAuth-токена запустите один раз локально — откроется браузер с авторизацией, токен сохранится в `~/.config/yandex-tracker-mcp/token.json`:
+Запустите один раз локально — откроется браузер с авторизацией Яндекса:
 
 ```bash
 npx -y yandex-tracker-mcp --org-id YOUR_ORG_ID --auth
@@ -25,9 +29,11 @@ CLI использует встроенное OAuth-приложение `yandex
 
 Токен автоматически сохраняется в `~/.config/yandex-tracker-mcp/token.json` (права `0600`) и оттуда же читается при последующих запусках — `access_token` никуда копировать не нужно. При истечении срока сервер сам обновит его через `refresh_token`.
 
-### Шаг 2. Создайте `.mcp.json` в корне проекта
+### Шаг 2. Пропишите сервер в конфиге клиента
 
-Укажите `TRACKER_ORG_ID` (для Яндекс 360 для бизнеса) и `TRACKER_USERNAME` — имя и фамилию, по которым `search_issues` будет по умолчанию фильтровать задачи:
+Все клиенты, кроме Codex, используют **одинаковый JSON-формат** `mcpServers`. Codex использует TOML. OAuth-токен в конфиге указывать **не нужно** — он читается из `~/.config/yandex-tracker-mcp/token.json` автоматически. `TRACKER_USERNAME` — имя-фамилия для фильтра `search_issues` по умолчанию (опционально).
+
+Базовый пример для **Яндекс 360 для бизнеса**:
 
 ```json
 {
@@ -44,30 +50,79 @@ CLI использует встроенное OAuth-приложение `yandex
 }
 ```
 
-Для Yandex Cloud Organization используйте `TRACKER_CLOUD_ORG_ID`:
+Для **Yandex Cloud Organization** замените `TRACKER_ORG_ID` на `TRACKER_CLOUD_ORG_ID` (значение — алфавитно-цифровой ID).
 
-```json
-{
-  "mcpServers": {
-    "yandex-tracker": {
-      "command": "npx",
-      "args": ["-y", "yandex-tracker-mcp"],
-      "env": {
-        "TRACKER_CLOUD_ORG_ID": "abc-xyz",
-        "TRACKER_USERNAME": "Иван Иванов"
-      }
-    }
-  }
-}
+#### Claude Code
+
+Путь конфига — `.mcp.json` в корне проекта (project-scoped, можно коммитить: ID организации не секрет). Положите в него JSON-пример выше.
+
+Альтернатива через CLI (user-scoped, доступно во всех проектах). Stdio:
+
+```bash
+claude mcp add yandex-tracker --transport stdio \
+  --env TRACKER_ORG_ID=1234567 \
+  --env TRACKER_USERNAME="Иван Иванов" \
+  -- npx -y yandex-tracker-mcp
 ```
 
-ID организации — не секрет, поэтому `.mcp.json` можно коммитить. OAuth-токен в этом файле указывать не нужно: он лежит в `~/.config/yandex-tracker-mcp/token.json` и подхватывается автоматически.
+На Windows (без WSL) `npx` требуется оборачивать в `cmd /c`: `-- cmd /c npx -y yandex-tracker-mcp`.
 
-**Фильтр по умолчанию.** `search_issues` автоматически добавляет к запросу `AND Assignee: "<TRACKER_USERNAME>"`. Чтобы найти задачи другого человека, скажи в промпте «найди задачи Петра Петрова» — модель передаст его имя параметром `assignee`, и фильтр по умолчанию будет заменён. Если в самом query уже есть `Assignee:`, автоподстановка пропускается.
+#### Claude Desktop
 
-### Шаг 3. Активируйте сервер в Claude Code
+Settings → Developer → Edit Config, либо прямо откройте файл:
 
-Запустите `claude` в корне проекта. При первом старте Claude Code попросит одобрить project-scoped MCP-серверы — подтвердите. Проверить статус можно командой `/mcp` внутри сессии.
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+Положите туда тот же JSON-пример. Если файл пустой — используйте пример целиком. Если уже есть другие MCP-серверы — добавьте ключ `"yandex-tracker"` внутрь существующего `mcpServers`.
+
+#### Cursor
+
+Путь конфига:
+
+- **Проект**: `.cursor/mcp.json` в корне проекта
+- **Глобально**: `~/.cursor/mcp.json`
+
+Формат — тот же JSON `mcpServers`. После сохранения Cursor подхватит сервер (или перезагрузите окно через `Cmd/Ctrl+Shift+P` → «Reload Window»).
+
+#### Codex CLI / Codex IDE extension
+
+Codex использует **TOML**. Путь конфига:
+
+- **Глобально**: `~/.codex/config.toml`
+- **Проект** (только для trusted-проектов): `.codex/config.toml`
+
+```toml
+[mcp_servers.yandex-tracker]
+command = "npx"
+args = ["-y", "yandex-tracker-mcp"]
+
+[mcp_servers.yandex-tracker.env]
+TRACKER_ORG_ID = "1234567"
+TRACKER_USERNAME = "Иван Иванов"
+```
+
+Для Yandex Cloud Organization замените `TRACKER_ORG_ID` на `TRACKER_CLOUD_ORG_ID`.
+
+```bash
+codex mcp add yandex-tracker \
+  --env TRACKER_ORG_ID=1234567 \
+  --env TRACKER_USERNAME="Иван Иванов" \
+  -- npx -y yandex-tracker-mcp
+```
+
+Один и тот же `config.toml` используется и CLI, и IDE-расширением Codex.
+
+### Шаг 3. Перезапустите клиент и проверьте
+
+- **Claude Code**: `claude` в корне проекта → подтвердите project-scoped MCP при первом запуске → `/mcp` покажет статус `connected`.
+- **Claude Desktop**: полностью закройте приложение (Cmd+Q / из системного трея) и откройте заново. Индикатор MCP появится в правом нижнем углу поля ввода.
+- **Cursor**: перезагрузите окно (`Cmd/Ctrl+Shift+P` → «Reload Window») либо Cursor целиком. В Settings → MCP сервер должен быть зелёным.
+- **Codex CLI**: `codex mcp list` — сервер должен быть `connected`.
+
+### Фильтр по умолчанию в `search_issues`
+
+`search_issues` автоматически добавляет к запросу `AND Assignee: "<TRACKER_USERNAME>"`. Чтобы найти задачи другого человека, скажи в промпте «найди задачи Петра Петрова» — модель передаст его имя параметром `assignee`, и фильтр по умолчанию будет заменён. Если в самом query уже есть `Assignee:`, автоподстановка пропускается.
 
 ## Переменные окружения
 
