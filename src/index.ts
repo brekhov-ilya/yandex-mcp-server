@@ -17,6 +17,7 @@ import { registerLinkTools } from "./tools/links.js";
 import { registerMetaTools } from "./tools/meta.js";
 import { registerEntityTools } from "./tools/entities.js";
 import { registerChecklistTools } from "./tools/checklists.js";
+import { registerUserTools } from "./tools/users.js";
 
 const DEFAULT_CLIENT_ID = "74e48aa0cc7c492b8a296c5d17f2cfd7";
 const DEFAULT_HTTP_PORT = 3000;
@@ -91,6 +92,8 @@ function parseArgs(): CliArgs {
 
 interface ServerConfig {
   defaultAssignee?: string;
+  defaultQueue?: string;
+  defaultProject?: string;
 }
 
 function createConfiguredServer(
@@ -102,13 +105,18 @@ function createConfiguredServer(
     version: "1.0.0",
   });
 
-  registerIssueTools(server, client, { defaultAssignee: config.defaultAssignee });
+  registerIssueTools(server, client, {
+    defaultAssignee: config.defaultAssignee,
+    defaultQueue: config.defaultQueue,
+    defaultProject: config.defaultProject,
+  });
   registerCommentTools(server, client);
   registerAttachmentTools(server, client);
   registerLinkTools(server, client);
-  registerMetaTools(server, client);
+  registerMetaTools(server, client, { defaultQueue: config.defaultQueue });
   registerEntityTools(server, client);
   registerChecklistTools(server, client);
+  registerUserTools(server, client);
 
   return server;
 }
@@ -258,7 +266,14 @@ async function main(): Promise<void> {
   const client = new TrackerClient({ token, orgId, cloudOrgId });
 
   const defaultAssignee = process.env.TRACKER_USERNAME?.trim() || undefined;
-  const serverConfig: ServerConfig = { defaultAssignee };
+  const defaultQueue = process.env.TRACKER_DEFAULT_QUEUE?.trim() || undefined;
+  const defaultProject = process.env.TRACKER_DEFAULT_PROJECT?.trim() || undefined;
+  if (defaultProject && !/^\d+$/.test(defaultProject)) {
+    process.stderr.write(
+      `Warning: TRACKER_DEFAULT_PROJECT="${defaultProject}" is not numeric — it will be used in TQL search filters but skipped in create_issue/update_issue (Tracker v3 expects numeric shortId).\n`,
+    );
+  }
+  const serverConfig: ServerConfig = { defaultAssignee, defaultQueue, defaultProject };
 
   if (transport === "http") {
     await startHttpServer(client, port, host, serverConfig);

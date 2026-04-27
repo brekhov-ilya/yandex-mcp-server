@@ -1,9 +1,31 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { TrackerClient } from "../tracker-client.js";
+import type { CreateIssueParams, ProjectInput, UpdateIssueParams } from "../types.js";
 
 export interface IssueToolsOptions {
   defaultAssignee?: string;
+  defaultQueue?: string;
+  defaultProject?: string;
+}
+
+const projectSchema = z.union([
+  z.number(),
+  z.object({
+    primary: z.object({ shortId: z.number() }),
+    secondary: z.array(z.object({ shortId: z.number() })).optional(),
+  }),
+]);
+
+function normalizeProject(input: ProjectInput | undefined): ProjectInput | undefined {
+  if (input === undefined) return undefined;
+  if (typeof input === "number") return { primary: { shortId: input } };
+  return input;
+}
+
+function defaultProjectAsInput(defaultProject: string | undefined): ProjectInput | undefined {
+  if (!defaultProject || !/^\d+$/.test(defaultProject)) return undefined;
+  return { primary: { shortId: Number(defaultProject) } };
 }
 
 export function registerIssueTools(
@@ -11,7 +33,7 @@ export function registerIssueTools(
   client: TrackerClient,
   options: IssueToolsOptions = {},
 ): void {
-  const { defaultAssignee } = options;
+  const { defaultAssignee, defaultQueue, defaultProject } = options;
   server.registerTool(
     "get_issue",
     {
@@ -34,9 +56,10 @@ export function registerIssueTools(
     {
       description:
         "Search Yandex Tracker issues using query language (e.g. 'Queue: MYQUEUE AND Status: Open'). " +
-        "By default filters by the assignee configured in TRACKER_USERNAME. " +
+        "By default filters by the assignee configured in TRACKER_USERNAME, the queue from TRACKER_DEFAULT_QUEUE, " +
+        "and the project from TRACKER_DEFAULT_PROJECT — each is auto-appended only if the query lacks the corresponding clause. " +
         "Pass `assignee` with a full name (e.g. 'Ivan Ivanov') to filter by someone else. " +
-        "If the query already contains an Assignee clause, no default filter is added.",
+        "Do NOT use this tool to look up users — use the find_user tool instead.",
       inputSchema: z.object({
         query: z
           .string()
@@ -63,10 +86,19 @@ export function registerIssueTools(
       const clampedPerPage = Math.min(perPage, 100);
       const assigneeFilter = assignee ?? defaultAssignee;
       const queryHasAssignee = /\bassignee\s*:/i.test(query);
-      const finalQuery =
-        assigneeFilter && !queryHasAssignee
-          ? `${query} AND Assignee: "${assigneeFilter.replace(/"/g, '\\"')}"`
-          : query;
+      const queryHasQueue = /\bqueue\s*:/i.test(query);
+      const queryHasProject = /\bproject\s*:/i.test(query);
+      let finalQuery = query;
+      if (assigneeFilter && !queryHasAssignee) {
+        finalQuery += ` AND Assignee: "${assigneeFilter.replace(/"/g, '\\"')}"`;
+      }
+      if (defaultQueue && !queryHasQueue) {
+        finalQuery += ` AND Queue: ${defaultQueue}`;
+      }
+      if (defaultProject && !queryHasProject) {
+        const isNum = /^\d+$/.test(defaultProject);
+        finalQuery += ` AND Project: ${isNum ? defaultProject : `"${defaultProject.replace(/"/g, '\\"')}"`}`;
+      }
       const issues = await client.searchIssues(finalQuery, page, clampedPerPage);
       const summary = issues.map((issue) => ({
         key: issue.key,
@@ -91,19 +123,39 @@ export function registerIssueTools(
       description:
         "Create a new issue in Yandex Tracker. Returns the created issue.",
       inputSchema: z.object({
-        queue: z.string().describe("Queue key, e.g. MYQUEUE"),
+        queue: z.string().optional().describe("Queue key, e.g. MYQUEUE. Falls back to TRACKER_DEFAULT_QUEUE if omitted."),
         summary: z.string().describe("Issue title"),
         description: z.string().optional().describe("Issue description"),
         type: z.string().optional().describe("Issue type key, e.g. task, bug, story"),
         priority: z.string().optional().describe("Priority key, e.g. critical, major, normal, minor, trivial"),
-        assignee: z.string().optional().describe("Assignee login"),
+        assignee: z.string().optional().describe("Assignee — login or display name (ФИО). Display names auto-resolve to login."),
         parent: z.string().optional().describe("Parent issue key, e.g. QUEUE-1"),
         tags: z.array(z.string()).optional().describe("Tags"),
-        followers: z.array(z.string()).optional().describe("Follower logins"),
+        followers: z.array(z.string()).optional().describe("Followers — logins or display names (ФИО). Display names auto-resolve to logins."),
+        project: projectSchema.optional().describe("Project: shortId (number) or v3 object {primary:{shortId},secondary:[{shortId}]}. Falls back to TRACKER_DEFAULT_PROJECT if omitted."),
       }),
     },
     async (params) => {
-      const issue = await client.createIssue(params);
+      const resolved: CreateIssueParams = { ...params, project: normalizeProject(params.project) };
+      if (resolved.assignee) {
+        resolved.assignee = await client.resolveUserLogin(resolved.assignee);
+      }
+      if (resolved.followers && resolved.followers.length > 0) {
+        resolved.followers = await Promise.all(
+          resolved.followers.map((f) => client.resolveUserLogin(f)),
+        );
+      }
+      if (!resolved.queue && defaultQueue) {
+        resolved.queue = defaultQueue;
+      }
+      if (!resolved.queue) {
+        throw new Error("queue is required (set TRACKER_DEFAULT_QUEUE or pass `queue`)");
+      }
+      if (!resolved.project) {
+        const fallback = defaultProjectAsInput(defaultProject);
+        if (fallback) resolved.project = fallback;
+      }
+      const issue = await client.createIssue(resolved);
       return {
         content: [{ type: "text" as const, text: JSON.stringify(issue, null, 2) }],
       };
@@ -121,14 +173,28 @@ export function registerIssueTools(
         description: z.string().optional().describe("New description"),
         type: z.string().optional().describe("Issue type key, e.g. task, bug, story"),
         priority: z.string().optional().describe("Priority key, e.g. critical, major, normal, minor, trivial"),
-        assignee: z.string().optional().describe("Assignee login"),
+        assignee: z.string().optional().describe("Assignee — login or display name (ФИО). Display names auto-resolve to login."),
         parent: z.string().optional().describe("Parent issue key, e.g. QUEUE-1"),
         tags: z.array(z.string()).optional().describe("Tags (replaces existing)"),
-        followers: z.array(z.string()).optional().describe("Follower logins (replaces existing)"),
+        followers: z.array(z.string()).optional().describe("Followers — logins or display names (ФИО). Replaces existing. Display names auto-resolve to logins."),
+        project: projectSchema.optional().describe("Project: shortId (number) or v3 object {primary:{shortId},secondary:[{shortId}]}."),
       }),
     },
     async ({ issueKey, ...updateParams }) => {
-      const issue = await client.updateIssue(issueKey, updateParams);
+      const resolved: UpdateIssueParams = { ...updateParams, project: normalizeProject(updateParams.project) };
+      if (resolved.assignee) {
+        resolved.assignee = await client.resolveUserLogin(resolved.assignee);
+      }
+      if (resolved.followers && resolved.followers.length > 0) {
+        resolved.followers = await Promise.all(
+          resolved.followers.map((f) => client.resolveUserLogin(f)),
+        );
+      }
+      if (resolved.project === undefined) {
+        const fallback = defaultProjectAsInput(defaultProject);
+        if (fallback) resolved.project = fallback;
+      }
+      const issue = await client.updateIssue(issueKey, resolved);
       return {
         content: [{ type: "text" as const, text: JSON.stringify(issue, null, 2) }],
       };

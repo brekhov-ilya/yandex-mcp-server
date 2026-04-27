@@ -128,8 +128,14 @@ export interface AuthConfig {
   forceAuth: boolean;
 }
 
+export interface ProjectRef {
+  shortId: number;
+}
+
+export type ProjectInput = number | { primary: ProjectRef; secondary?: ProjectRef[] };
+
 export interface CreateIssueParams {
-  queue: string;
+  queue?: string;
   summary: string;
   description?: string;
   type?: string;
@@ -138,6 +144,7 @@ export interface CreateIssueParams {
   parent?: string;
   tags?: string[];
   followers?: string[];
+  project?: ProjectInput;
 }
 
 export interface UpdateIssueParams {
@@ -149,6 +156,7 @@ export interface UpdateIssueParams {
   parent?: string;
   tags?: string[];
   followers?: string[];
+  project?: ProjectInput;
 }
 
 export interface TrackerResolution {

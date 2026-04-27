@@ -2,10 +2,16 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { TrackerClient } from "../tracker-client.js";
 
+export interface MetaToolsOptions {
+  defaultQueue?: string;
+}
+
 export function registerMetaTools(
   server: McpServer,
   client: TrackerClient,
+  options: MetaToolsOptions = {},
 ): void {
+  const { defaultQueue } = options;
   server.registerTool(
     "get_statuses",
     {
@@ -90,13 +96,17 @@ export function registerMetaTools(
   server.registerTool(
     "get_queue_local_fields",
     {
-      description: "Get local (custom) fields for a specific queue in Yandex Tracker",
+      description: "Get local (custom) fields for a specific queue in Yandex Tracker. Falls back to TRACKER_DEFAULT_QUEUE if queueKey omitted.",
       inputSchema: z.object({
-        queueKey: z.string().describe("Queue key, e.g. MYQUEUE"),
+        queueKey: z.string().optional().describe("Queue key, e.g. MYQUEUE. Optional if TRACKER_DEFAULT_QUEUE is set."),
       }),
     },
     async ({ queueKey }) => {
-      const fields = await client.getQueueLocalFields(queueKey);
+      const key = queueKey ?? defaultQueue;
+      if (!key) {
+        throw new Error("queueKey is required (set TRACKER_DEFAULT_QUEUE or pass `queueKey`)");
+      }
+      const fields = await client.getQueueLocalFields(key);
       return {
         content: [{ type: "text" as const, text: JSON.stringify(fields, null, 2) }],
       };
