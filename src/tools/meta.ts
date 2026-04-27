@@ -96,9 +96,17 @@ export function registerMetaTools(
   server.registerTool(
     "get_queue_local_fields",
     {
-      description: "Get local (custom) fields for a specific queue in Yandex Tracker. Falls back to TRACKER_DEFAULT_QUEUE if queueKey omitted.",
+      description:
+        "Get local (custom) fields for a specific queue in Yandex Tracker." +
+        (defaultQueue
+          ? ` Default queue is "${defaultQueue}" — when the user does not name a queue, OMIT queueKey and use the default. Do NOT ask the user to choose a queue.`
+          : ""),
       inputSchema: z.object({
-        queueKey: z.string().optional().describe("Queue key, e.g. MYQUEUE. Optional if TRACKER_DEFAULT_QUEUE is set."),
+        queueKey: z.string().optional().describe(
+          defaultQueue
+            ? `Queue key, e.g. MYQUEUE. Optional — defaults to "${defaultQueue}". Pass only if user explicitly named another queue.`
+            : "Queue key, e.g. MYQUEUE.",
+        ),
       }),
     },
     async ({ queueKey }) => {

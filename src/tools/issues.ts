@@ -34,6 +34,15 @@ export function registerIssueTools(
   options: IssueToolsOptions = {},
 ): void {
   const { defaultAssignee, defaultQueue, defaultProject } = options;
+  const queueDefaultNote = defaultQueue
+    ? ` Default queue is "${defaultQueue}" — when the user does not name a queue, OMIT this field and use the default. Do NOT ask the user to choose a queue.`
+    : "";
+  const projectDefaultNote = defaultProject
+    ? ` Default project is "${defaultProject}" — when the user does not name a project, OMIT this field and use the default. Do NOT ask the user to choose a project.`
+    : "";
+  const assigneeDefaultNote = defaultAssignee
+    ? ` Default assignee filter is "${defaultAssignee}" (TRACKER_USERNAME).`
+    : "";
   server.registerTool(
     "get_issue",
     {
@@ -56,9 +65,11 @@ export function registerIssueTools(
     {
       description:
         "Search Yandex Tracker issues using query language (e.g. 'Queue: MYQUEUE AND Status: Open'). " +
-        "By default filters by the assignee configured in TRACKER_USERNAME, the queue from TRACKER_DEFAULT_QUEUE, " +
-        "and the project from TRACKER_DEFAULT_PROJECT — each is auto-appended only if the query lacks the corresponding clause. " +
-        "Pass `assignee` with a full name (e.g. 'Ivan Ivanov') to filter by someone else. " +
+        "Server auto-appends Assignee:/Queue:/Project: filters from server defaults if missing in the query." +
+        assigneeDefaultNote +
+        queueDefaultNote +
+        projectDefaultNote +
+        " Pass `assignee` with a full name (e.g. 'Ivan Ivanov') to filter by someone else. " +
         "Do NOT use this tool to look up users — use the find_user tool instead.",
       inputSchema: z.object({
         query: z
@@ -121,9 +132,15 @@ export function registerIssueTools(
     "create_issue",
     {
       description:
-        "Create a new issue in Yandex Tracker. Returns the created issue.",
+        "Create a new issue in Yandex Tracker. Returns the created issue." +
+        queueDefaultNote +
+        projectDefaultNote,
       inputSchema: z.object({
-        queue: z.string().optional().describe("Queue key, e.g. MYQUEUE. Falls back to TRACKER_DEFAULT_QUEUE if omitted."),
+        queue: z.string().optional().describe(
+          defaultQueue
+            ? `Queue key, e.g. MYQUEUE. Optional — defaults to "${defaultQueue}". Pass only if user explicitly named another queue.`
+            : "Queue key, e.g. MYQUEUE.",
+        ),
         summary: z.string().describe("Issue title"),
         description: z.string().optional().describe("Issue description"),
         type: z.string().optional().describe("Issue type key, e.g. task, bug, story"),
@@ -132,7 +149,11 @@ export function registerIssueTools(
         parent: z.string().optional().describe("Parent issue key, e.g. QUEUE-1"),
         tags: z.array(z.string()).optional().describe("Tags"),
         followers: z.array(z.string()).optional().describe("Followers — logins or display names (ФИО). Display names auto-resolve to logins."),
-        project: projectSchema.optional().describe("Project: shortId (number) or v3 object {primary:{shortId},secondary:[{shortId}]}. Falls back to TRACKER_DEFAULT_PROJECT if omitted."),
+        project: projectSchema.optional().describe(
+          defaultProject
+            ? `Project: shortId (number) or v3 object {primary:{shortId},secondary:[{shortId}]}. Optional — defaults to "${defaultProject}". Pass only if user explicitly named another project.`
+            : "Project: shortId (number) or v3 object {primary:{shortId},secondary:[{shortId}]}.",
+        ),
       }),
     },
     async (params) => {
@@ -166,7 +187,8 @@ export function registerIssueTools(
     "update_issue",
     {
       description:
-        "Update an existing Yandex Tracker issue. Pass only the fields you want to change.",
+        "Update an existing Yandex Tracker issue. Pass only the fields you want to change." +
+        projectDefaultNote,
       inputSchema: z.object({
         issueKey: z.string().describe("Issue key to update, e.g. QUEUE-123"),
         summary: z.string().optional().describe("New issue title"),
