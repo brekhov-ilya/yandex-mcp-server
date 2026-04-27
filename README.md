@@ -120,9 +120,21 @@ codex mcp add yandex-tracker \
 - **Cursor**: перезагрузите окно (`Cmd/Ctrl+Shift+P` → «Reload Window») либо Cursor целиком. В Settings → MCP сервер должен быть зелёным.
 - **Codex CLI**: `codex mcp list` — сервер должен быть `connected`.
 
-### Фильтр по умолчанию в `search_issues`
+### Фильтры по умолчанию
 
-`search_issues` автоматически добавляет к запросу `AND Assignee: "<TRACKER_USERNAME>"`. Чтобы найти задачи другого человека, скажи в промпте «найди задачи Петра Петрова» — модель передаст его имя параметром `assignee`, и фильтр по умолчанию будет заменён. Если в самом query уже есть `Assignee:`, автоподстановка пропускается.
+`search_issues` автоматически добавляет к TQL-запросу:
+
+- `AND Assignee: "<TRACKER_USERNAME>"` — если задано и в query нет `Assignee:`.
+- `AND Queue: <TRACKER_DEFAULT_QUEUE>` — если задано и в query нет `Queue:`.
+- `AND Project: <TRACKER_DEFAULT_PROJECT>` — если задано и в query нет `Project:`.
+
+Любое явное упоминание соответствующего поля в самом query отключает автоподстановку. Параметр `assignee` при вызове `search_issues` тоже переопределяет дефолт.
+
+`create_issue` подставляет `TRACKER_DEFAULT_QUEUE` и `TRACKER_DEFAULT_PROJECT`, если соответствующие параметры не переданы. `update_issue` подставляет только `TRACKER_DEFAULT_PROJECT` (при явном отсутствии поля). `get_queue_local_fields` принимает `queueKey` опционально и фолбэчится на `TRACKER_DEFAULT_QUEUE`.
+
+### ФИО → login
+
+В полях `assignee` и `followers` (`create_issue`, `update_issue`) можно передавать ФИО на русском — сервер сам резолвит их в login через справочник `/v3/users`. Для явного поиска пользователя используйте `find_user` — он принимает подстроку имени, login или email и возвращает `[{login, display, email}]`.
 
 ## Переменные окружения
 
@@ -131,6 +143,8 @@ codex mcp add yandex-tracker \
 | `TRACKER_ORG_ID` | ID организации Яндекс 360 для бизнеса (заголовок `X-Org-ID`) |
 | `TRACKER_CLOUD_ORG_ID` | ID Yandex Cloud Organization (заголовок `X-Cloud-Org-ID`) |
 | `TRACKER_USERNAME` | Имя и фамилия для автоматического фильтра `Assignee:` в `search_issues`. Опционально |
+| `TRACKER_DEFAULT_QUEUE` | Очередь по умолчанию. Используется в `search_issues` (TQL `Queue:`), `create_issue` (поле `queue`), `get_queue_local_fields` (поле `queueKey`). Опционально |
+| `TRACKER_DEFAULT_PROJECT` | Проект по умолчанию. Числовой `shortId`. Используется в `search_issues` (TQL `Project:`), `create_issue` / `update_issue` (поле `project` в формате v3 `{primary:{shortId}}`). Опционально. Нечисловое значение применяется только в TQL-фильтре |
 | `TRACKER_OAUTH_TOKEN` | Опционально. Переопределяет токен из `~/.config/yandex-tracker-mcp/token.json` |
 
 Указывайте ровно один из `TRACKER_ORG_ID` / `TRACKER_CLOUD_ORG_ID` — в зависимости от типа вашей организации.
@@ -158,6 +172,7 @@ codex mcp add yandex-tracker \
 | `get_queue_local_fields` | Получить локальные (кастомные) поля очереди |
 | `get_global_fields` | Получить глобальные (системные) поля |
 | `get_entity` | Получить параметры сущности (проект, портфель) по типу и ID |
+| `find_user` | Найти пользователей по подстроке ФИО, login или email. Возвращает `[{login, display, email}]` |
 
 ## Лицензия
 
