@@ -55,7 +55,9 @@ export class TrackerClient {
 
 		if (!response.ok) {
 			const errorBody = await response.text();
-			throw new Error(`Tracker API error ${response.status}: ${errorBody}`);
+			const sentBody = body !== undefined ? JSON.stringify(body) : '';
+			const sentSuffix = sentBody ? ` | request body: ${sentBody}` : '';
+			throw new Error(`Tracker API error ${response.status} on ${method} ${path}: ${errorBody}${sentSuffix}`);
 		}
 
 		return response.json() as Promise<T>;

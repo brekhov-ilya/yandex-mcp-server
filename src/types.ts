@@ -129,10 +129,16 @@ export interface AuthConfig {
 }
 
 export interface ProjectRef {
-  shortId: number;
+  id?: string;
+  shortId?: number;
+  key?: string;
 }
 
-export type ProjectInput = number | { primary: ProjectRef; secondary?: ProjectRef[] };
+export type ProjectInput =
+  | number
+  | string
+  | ProjectRef
+  | { primary: ProjectRef | number; secondary?: (ProjectRef | number)[] };
 
 export interface CreateIssueParams {
   queue?: string;

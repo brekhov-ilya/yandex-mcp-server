@@ -9,23 +9,26 @@ export interface IssueToolsOptions {
   defaultProject?: string;
 }
 
+const projectRefSchema = z.object({
+  id: z.string().optional(),
+  shortId: z.number().optional(),
+  key: z.string().optional(),
+});
+
 const projectSchema = z.union([
   z.number(),
+  z.string(),
+  projectRefSchema,
   z.object({
-    primary: z.object({ shortId: z.number() }),
-    secondary: z.array(z.object({ shortId: z.number() })).optional(),
+    primary: z.union([z.number(), projectRefSchema]),
+    secondary: z.array(z.union([z.number(), projectRefSchema])).optional(),
   }),
 ]);
 
-function normalizeProject(input: ProjectInput | undefined): ProjectInput | undefined {
-  if (input === undefined) return undefined;
-  if (typeof input === "number") return { primary: { shortId: input } };
-  return input;
-}
-
 function defaultProjectAsInput(defaultProject: string | undefined): ProjectInput | undefined {
-  if (!defaultProject || !/^\d+$/.test(defaultProject)) return undefined;
-  return { primary: { shortId: Number(defaultProject) } };
+  if (!defaultProject) return undefined;
+  if (/^\d+$/.test(defaultProject)) return Number(defaultProject);
+  return defaultProject;
 }
 
 export function registerIssueTools(
@@ -151,13 +154,13 @@ export function registerIssueTools(
         followers: z.array(z.string()).optional().describe("Followers — logins or display names (ФИО). Display names auto-resolve to logins."),
         project: projectSchema.optional().describe(
           defaultProject
-            ? `Project: shortId (number) or v3 object {primary:{shortId},secondary:[{shortId}]}. Optional — defaults to "${defaultProject}". Pass only if user explicitly named another project.`
-            : "Project: shortId (number) or v3 object {primary:{shortId},secondary:[{shortId}]}.",
+            ? `Project: shortId (number), key (string), {id|shortId|key} ref, or {primary, secondary?} for multi-project. Optional — defaults to "${defaultProject}". Pass only if user explicitly named another project.`
+            : "Project: shortId (number), key (string), {id|shortId|key} ref, or {primary, secondary?} for multi-project.",
         ),
       }),
     },
     async (params) => {
-      const resolved: CreateIssueParams = { ...params, project: normalizeProject(params.project) };
+      const resolved: CreateIssueParams = { ...params };
       if (resolved.assignee) {
         resolved.assignee = await client.resolveUserLogin(resolved.assignee);
       }
@@ -203,7 +206,7 @@ export function registerIssueTools(
       }),
     },
     async ({ issueKey, ...updateParams }) => {
-      const resolved: UpdateIssueParams = { ...updateParams, project: normalizeProject(updateParams.project) };
+      const resolved: UpdateIssueParams = { ...updateParams };
       if (resolved.assignee) {
         resolved.assignee = await client.resolveUserLogin(resolved.assignee);
       }
