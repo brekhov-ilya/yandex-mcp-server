@@ -160,9 +160,11 @@ codex mcp add yandex-tracker \
 | `get_transitions` | Получить доступные переходы статуса для задачи |
 | `transition_issue` | Перевести задачу в другой статус (выполнить переход) |
 | `get_comments` | Получить все комментарии к задаче |
+| `create_comment` | Добавить комментарий к задаче (с поддержкой `summonees` — упоминаний и `attachmentIds`) |
 | `get_attachments` | Получить метаданные вложений (имя, размер, MIME-тип, id) |
 | `download_attachment` | Скачать вложение в base64. Изображения возвращаются как image-блоки |
 | `get_issue_links` | Получить все связи задачи |
+| `create_issue_link` | Создать связь между задачами (`relates`, `depends on`, `is dependent by`, `duplicates`, `is subtask for` и др.) |
 | `get_checklist` | Получить чеклист задачи |
 | `get_statuses` | Получить список всех статусов |
 | `get_issue_types` | Получить список типов задач (задача, баг, история и т.д.) |

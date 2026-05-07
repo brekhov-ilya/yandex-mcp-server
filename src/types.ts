@@ -70,6 +70,12 @@ export interface TrackerComment {
   [key: string]: unknown;
 }
 
+export interface CreateCommentParams {
+  text: string;
+  attachmentIds?: string[];
+  summonees?: string[];
+}
+
 export interface TrackerAttachment {
   self: string;
   id: string;
@@ -102,6 +108,22 @@ export interface TrackerLink {
   };
   status: TrackerStatus;
   [key: string]: unknown;
+}
+
+export type TrackerLinkRelationship =
+  | 'relates'
+  | 'is dependent by'
+  | 'depends on'
+  | 'is subtask for'
+  | 'is parent task for'
+  | 'duplicates'
+  | 'is duplicated by'
+  | 'is epic of'
+  | 'has epic';
+
+export interface CreateIssueLinkParams {
+  relationship: TrackerLinkRelationship;
+  issue: string;
 }
 
 export interface TrackerClientConfig {

@@ -17,6 +17,8 @@ import type {
 	TrackerUser,
 	CreateIssueParams,
 	UpdateIssueParams,
+	CreateIssueLinkParams,
+	CreateCommentParams,
 } from './types.js';
 
 const BASE_URL = 'https://api.tracker.yandex.net';
@@ -75,6 +77,14 @@ export class TrackerClient {
 		return this.request<TrackerComment[]>('GET', `/v3/issues/${encodeURIComponent(issueKey)}/comments`);
 	}
 
+	async createComment(issueKey: string, params: CreateCommentParams): Promise<TrackerComment> {
+		return this.request<TrackerComment>(
+			'POST',
+			`/v3/issues/${encodeURIComponent(issueKey)}/comments`,
+			params,
+		);
+	}
+
 	async getAttachments(issueKey: string): Promise<TrackerAttachment[]> {
 		return this.request<TrackerAttachment[]>('GET', `/v3/issues/${encodeURIComponent(issueKey)}/attachments`);
 	}
@@ -112,6 +122,14 @@ export class TrackerClient {
 
 	async getIssueLinks(issueKey: string): Promise<TrackerLink[]> {
 		return this.request<TrackerLink[]>('GET', `/v3/issues/${encodeURIComponent(issueKey)}/links`);
+	}
+
+	async createIssueLink(issueKey: string, params: CreateIssueLinkParams): Promise<TrackerLink> {
+		return this.request<TrackerLink>(
+			'POST',
+			`/v3/issues/${encodeURIComponent(issueKey)}/links`,
+			params,
+		);
 	}
 
 	async createIssue(params: CreateIssueParams): Promise<TrackerIssue> {
