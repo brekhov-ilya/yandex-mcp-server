@@ -76,6 +76,12 @@ export interface CreateCommentParams {
   summonees?: string[];
 }
 
+export interface UpdateCommentParams {
+  text?: string;
+  attachmentIds?: string[];
+  summonees?: string[];
+}
+
 export interface TrackerAttachment {
   self: string;
   id: string;

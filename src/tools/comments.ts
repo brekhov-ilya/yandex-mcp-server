@@ -58,4 +58,46 @@ export function registerCommentTools(
       };
     },
   );
+
+  server.registerTool(
+    "update_comment",
+    {
+      description:
+        "Edit an existing comment on a Yandex Tracker issue. Pass any subset of fields. Summonees accept logins or full names (resolved automatically). Note: attachmentIds and summonees fully replace existing values when provided.",
+      inputSchema: z.object({
+        issueKey: z.string().describe("Issue key, e.g. QUEUE-123"),
+        commentId: z.string().describe("Comment ID to edit"),
+        text: z
+          .string()
+          .min(1)
+          .optional()
+          .describe("New comment text (markdown supported)"),
+        summonees: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "Replace summonees list. Logins or full names of users to summon (notify)",
+          ),
+        attachmentIds: z
+          .array(z.string())
+          .optional()
+          .describe("Replace attachments list with these IDs"),
+      }),
+    },
+    async ({ issueKey, commentId, text, summonees, attachmentIds }) => {
+      const resolvedSummonees = summonees
+        ? await Promise.all(summonees.map((s) => client.resolveUserLogin(s)))
+        : undefined;
+      const comment = await client.updateComment(issueKey, commentId, {
+        text,
+        summonees: resolvedSummonees,
+        attachmentIds,
+      });
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(comment, null, 2) },
+        ],
+      };
+    },
+  );
 }

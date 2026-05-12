@@ -161,6 +161,7 @@ codex mcp add yandex-tracker \
 | `transition_issue` | Перевести задачу в другой статус (выполнить переход) |
 | `get_comments` | Получить все комментарии к задаче |
 | `create_comment` | Добавить комментарий к задаче (с поддержкой `summonees` — упоминаний и `attachmentIds`) |
+| `update_comment` | Отредактировать комментарий (`text`, `summonees`, `attachmentIds`) |
 | `get_attachments` | Получить метаданные вложений (имя, размер, MIME-тип, id) |
 | `download_attachment` | Скачать вложение в base64. Изображения возвращаются как image-блоки |
 | `get_issue_links` | Получить все связи задачи |

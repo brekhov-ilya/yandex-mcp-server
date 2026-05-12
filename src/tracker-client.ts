@@ -19,6 +19,7 @@ import type {
 	UpdateIssueParams,
 	CreateIssueLinkParams,
 	CreateCommentParams,
+	UpdateCommentParams,
 } from './types.js';
 
 const BASE_URL = 'https://api.tracker.yandex.net';
@@ -81,6 +82,18 @@ export class TrackerClient {
 		return this.request<TrackerComment>(
 			'POST',
 			`/v3/issues/${encodeURIComponent(issueKey)}/comments`,
+			params,
+		);
+	}
+
+	async updateComment(
+		issueKey: string,
+		commentId: string,
+		params: UpdateCommentParams,
+	): Promise<TrackerComment> {
+		return this.request<TrackerComment>(
+			'PATCH',
+			`/v3/issues/${encodeURIComponent(issueKey)}/comments/${encodeURIComponent(commentId)}`,
 			params,
 		);
 	}
