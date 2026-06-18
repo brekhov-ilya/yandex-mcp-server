@@ -179,6 +179,8 @@ export interface CreateIssueParams {
   tags?: string[];
   followers?: string[];
   project?: ProjectInput;
+  // Глобальные и локальные (кастомные) поля передаются как свойства верхнего уровня по их key/id.
+  [key: string]: unknown;
 }
 
 export interface UpdateIssueParams {
@@ -191,6 +193,8 @@ export interface UpdateIssueParams {
   tags?: string[];
   followers?: string[];
   project?: ProjectInput;
+  // Глобальные и локальные (кастомные) поля передаются как свойства верхнего уровня по их key/id.
+  [key: string]: unknown;
 }
 
 export interface TrackerResolution {
