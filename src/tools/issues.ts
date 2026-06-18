@@ -31,6 +31,50 @@ function defaultProjectAsInput(defaultProject: string | undefined): ProjectInput
   return defaultProject;
 }
 
+const fieldsSchema = z
+  .record(z.string(), z.unknown())
+  .optional()
+  .describe(
+    "Map of additional field key → value for global and local (custom) fields, e.g. { \"qaEngineer\": \"login\", \"deadline\": \"2026-01-31\" }. " +
+      "Discover field keys via get_global_fields and get_queue_local_fields. " +
+      "Use Tracker value formats: select → option key, date → \"YYYY-MM-DD\", user → login, multi-value → array. " +
+      "For user-type fields you may pass a display name (ФИО) and list its key in `userFields` to auto-resolve to a login.",
+  );
+
+const userFieldsSchema = z
+  .array(z.string())
+  .optional()
+  .describe(
+    "Keys from `fields` whose values are display names (ФИО) or logins to auto-resolve to logins, e.g. [\"qaEngineer\"]. Each value may be a single name or an array of names.",
+  );
+
+/**
+ * Подмешивает кастомные/глобальные поля в тело запроса на верхнем уровне,
+ * предварительно преобразуя ФИО→login для полей, перечисленных в userFields.
+ */
+async function applyCustomFields(
+  client: TrackerClient,
+  target: Record<string, unknown>,
+  fields: Record<string, unknown> | undefined,
+  userFields: string[] | undefined,
+): Promise<void> {
+  if (!fields) return;
+  const resolvedFields: Record<string, unknown> = { ...fields };
+  if (userFields) {
+    for (const key of userFields) {
+      const value = resolvedFields[key];
+      if (Array.isArray(value)) {
+        resolvedFields[key] = await Promise.all(
+          value.map((v) => client.resolveUserLogin(String(v))),
+        );
+      } else if (typeof value === "string") {
+        resolvedFields[key] = await client.resolveUserLogin(value);
+      }
+    }
+  }
+  Object.assign(target, resolvedFields);
+}
+
 export function registerIssueTools(
   server: McpServer,
   client: TrackerClient,
@@ -135,7 +179,8 @@ export function registerIssueTools(
     "create_issue",
     {
       description:
-        "Create a new issue in Yandex Tracker. Returns the created issue." +
+        "Create a new issue in Yandex Tracker. Returns the created issue. " +
+        "Use `fields` to set any global or local (custom) queue fields (e.g. QA engineer, documentation) — discover their keys via get_global_fields / get_queue_local_fields." +
         queueDefaultNote +
         projectDefaultNote,
       inputSchema: z.object({
@@ -157,9 +202,11 @@ export function registerIssueTools(
             ? `Project: shortId (number), key (string), {id|shortId|key} ref, or {primary, secondary?} for multi-project. Optional — defaults to "${defaultProject}". Pass only if user explicitly named another project.`
             : "Project: shortId (number), key (string), {id|shortId|key} ref, or {primary, secondary?} for multi-project.",
         ),
+        fields: fieldsSchema,
+        userFields: userFieldsSchema,
       }),
     },
-    async (params) => {
+    async ({ fields, userFields, ...params }) => {
       const resolved: CreateIssueParams = { ...params };
       if (resolved.assignee) {
         resolved.assignee = await client.resolveUserLogin(resolved.assignee);
@@ -179,6 +226,7 @@ export function registerIssueTools(
         const fallback = defaultProjectAsInput(defaultProject);
         if (fallback) resolved.project = fallback;
       }
+      await applyCustomFields(client, resolved, fields, userFields);
       const issue = await client.createIssue(resolved);
       return {
         content: [{ type: "text" as const, text: JSON.stringify(issue, null, 2) }],
@@ -190,7 +238,8 @@ export function registerIssueTools(
     "update_issue",
     {
       description:
-        "Update an existing Yandex Tracker issue. Pass only the fields you want to change." +
+        "Update an existing Yandex Tracker issue. Pass only the fields you want to change. " +
+        "Use `fields` to set any global or local (custom) queue fields — discover their keys via get_global_fields / get_queue_local_fields." +
         projectDefaultNote,
       inputSchema: z.object({
         issueKey: z.string().describe("Issue key to update, e.g. QUEUE-123"),
@@ -203,9 +252,11 @@ export function registerIssueTools(
         tags: z.array(z.string()).optional().describe("Tags (replaces existing)"),
         followers: z.array(z.string()).optional().describe("Followers — logins or display names (ФИО). Replaces existing. Display names auto-resolve to logins."),
         project: projectSchema.optional().describe("Project: shortId (number) or v3 object {primary:{shortId},secondary:[{shortId}]}."),
+        fields: fieldsSchema,
+        userFields: userFieldsSchema,
       }),
     },
-    async ({ issueKey, ...updateParams }) => {
+    async ({ issueKey, fields, userFields, ...updateParams }) => {
       const resolved: UpdateIssueParams = { ...updateParams };
       if (resolved.assignee) {
         resolved.assignee = await client.resolveUserLogin(resolved.assignee);
@@ -219,6 +270,7 @@ export function registerIssueTools(
         const fallback = defaultProjectAsInput(defaultProject);
         if (fallback) resolved.project = fallback;
       }
+      await applyCustomFields(client, resolved, fields, userFields);
       const issue = await client.updateIssue(issueKey, resolved);
       return {
         content: [{ type: "text" as const, text: JSON.stringify(issue, null, 2) }],
