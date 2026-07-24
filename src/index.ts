@@ -121,6 +121,56 @@ function createConfiguredServer(
   return server;
 }
 
+interface HttpServerDefaults {
+  orgId?: string;
+  cloudOrgId?: string;
+  defaultQueue?: string;
+  defaultProject?: string;
+}
+
+const ASSIGNEE_CACHE_TTL_MS = 10 * 60 * 1000;
+const assigneeCache = new Map<string, { display: string | undefined; expiresAt: number }>();
+
+async function resolveDefaultAssignee(
+  client: TrackerClient,
+  token: string,
+): Promise<string | undefined> {
+  const cached = assigneeCache.get(token);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.display;
+  }
+
+  let display: string | undefined;
+  try {
+    const myself = await client.getMyself();
+    display = myself.display || myself.login;
+  } catch {
+    display = undefined;
+  }
+
+  assigneeCache.set(token, { display, expiresAt: Date.now() + ASSIGNEE_CACHE_TTL_MS });
+  return display;
+}
+
+function extractBearerToken(req: IncomingMessage): string | undefined {
+  const auth = req.headers["authorization"];
+  if (!auth || Array.isArray(auth)) return undefined;
+  const match = /^(?:OAuth|Bearer)\s+(.+)$/i.exec(auth);
+  return match?.[1];
+}
+
+function extractOrgHeaders(req: IncomingMessage): {
+  orgId?: string;
+  cloudOrgId?: string;
+} {
+  const orgId = req.headers["x-org-id"];
+  const cloudOrgId = req.headers["x-cloud-org-id"];
+  return {
+    orgId: typeof orgId === "string" ? orgId : undefined,
+    cloudOrgId: typeof cloudOrgId === "string" ? cloudOrgId : undefined,
+  };
+}
+
 async function parseJsonBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -154,7 +204,7 @@ function sendJsonError(
 async function handleMcpRequest(
   req: IncomingMessage,
   res: ServerResponse,
-  transport: StreamableHTTPServerTransport,
+  defaults: HttpServerDefaults,
 ): Promise<void> {
   const parsedUrl = new URL(
     req.url ?? "/",
@@ -167,42 +217,90 @@ async function handleMcpRequest(
   }
 
   const method = req.method?.toUpperCase();
+  if (method !== "POST" && method !== "GET" && method !== "DELETE") {
+    res.writeHead(405, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Method not allowed" }));
+    return;
+  }
 
+  const token = extractBearerToken(req);
+  if (!token) {
+    sendJsonError(
+      res,
+      401,
+      -32001,
+      'Missing or invalid Authorization header (expected "OAuth <token>" or "Bearer <token>" with your personal Yandex Tracker OAuth token).',
+    );
+    return;
+  }
+
+  const headerOrg = extractOrgHeaders(req);
+  const orgId = headerOrg.orgId ?? defaults.orgId;
+  const cloudOrgId = headerOrg.cloudOrgId ?? defaults.cloudOrgId;
+
+  if (orgId && cloudOrgId) {
+    sendJsonError(
+      res,
+      400,
+      -32000,
+      "Specify either X-Org-Id or X-Cloud-Org-Id, not both.",
+    );
+    return;
+  }
+  if (!orgId && !cloudOrgId) {
+    sendJsonError(
+      res,
+      400,
+      -32000,
+      "Missing organization: pass an X-Org-Id or X-Cloud-Org-Id header, or configure TRACKER_ORG_ID / TRACKER_CLOUD_ORG_ID on the server.",
+    );
+    return;
+  }
+
+  let body: unknown;
   if (method === "POST") {
-    let body: unknown;
     try {
       body = await parseJsonBody(req);
     } catch {
       sendJsonError(res, 400, -32700, "Parse error");
       return;
     }
-    await transport.handleRequest(req, res, body);
-  } else if (method === "GET") {
-    await transport.handleRequest(req, res);
-  } else if (method === "DELETE") {
-    await transport.handleRequest(req, res);
-  } else {
-    res.writeHead(405, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "Method not allowed" }));
   }
-}
 
-async function startHttpServer(
-  client: TrackerClient,
-  port: number,
-  host: string,
-  config: ServerConfig,
-): Promise<void> {
+  const client = new TrackerClient({ token, orgId, cloudOrgId });
+  const defaultAssignee = await resolveDefaultAssignee(client, token);
+
+  const server = createConfiguredServer(client, {
+    defaultAssignee,
+    defaultQueue: defaults.defaultQueue,
+    defaultProject: defaults.defaultProject,
+  });
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
   });
 
-  const server = createConfiguredServer(client, config);
+  res.on("close", () => {
+    transport.close().catch(() => undefined);
+    server.close().catch(() => undefined);
+  });
+
   await server.connect(transport);
 
+  if (method === "POST") {
+    await transport.handleRequest(req, res, body);
+  } else {
+    await transport.handleRequest(req, res);
+  }
+}
+
+async function startHttpServer(
+  port: number,
+  host: string,
+  defaults: HttpServerDefaults,
+): Promise<void> {
   const httpServer = createServer(
     (req: IncomingMessage, res: ServerResponse) => {
-      handleMcpRequest(req, res, transport).catch((err: unknown) => {
+      handleMcpRequest(req, res, defaults).catch((err: unknown) => {
         process.stderr.write(
           `Unhandled error: ${err instanceof Error ? err.message : String(err)}\n`,
         );
@@ -216,6 +314,9 @@ async function startHttpServer(
   httpServer.listen(port, host, () => {
     process.stderr.write(
       `MCP HTTP server listening on http://${host}:${port}/mcp\n`,
+    );
+    process.stderr.write(
+      "Each request must carry its own \"Authorization: OAuth <token>\" header with a personal Yandex Tracker OAuth token.\n",
     );
   });
 }
@@ -242,30 +343,14 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  if (!orgId && !cloudOrgId) {
-    process.stderr.write(
-      "Error: You must specify either --org-id <value> / TRACKER_ORG_ID or --cloud-org-id <value> / TRACKER_CLOUD_ORG_ID.\n",
-    );
-    process.exit(1);
-  }
-
-  let token: string;
-  if (cliToken) {
-    token = cliToken;
-  } else {
-    token = await resolveToken({ clientId, forceAuth });
-  }
-
   if (forceAuth) {
+    await resolveToken({ clientId, forceAuth: true });
     process.stderr.write(
       `Token is stored in ~/.config/yandex-tracker-mcp/token.json. You can now start the server without --auth.\n`,
     );
     return;
   }
 
-  const client = new TrackerClient({ token, orgId, cloudOrgId });
-
-  const defaultAssignee = process.env.TRACKER_USERNAME?.trim() || undefined;
   const defaultQueue = process.env.TRACKER_DEFAULT_QUEUE?.trim() || undefined;
   const defaultProject = process.env.TRACKER_DEFAULT_PROJECT?.trim() || undefined;
   if (defaultProject && !/^\d+$/.test(defaultProject)) {
@@ -273,15 +358,31 @@ async function main(): Promise<void> {
       `Warning: TRACKER_DEFAULT_PROJECT="${defaultProject}" is not numeric — it will be used in TQL search filters but skipped in create_issue/update_issue (Tracker v3 expects numeric shortId).\n`,
     );
   }
-  const serverConfig: ServerConfig = { defaultAssignee, defaultQueue, defaultProject };
 
   if (transport === "http") {
-    await startHttpServer(client, port, host, serverConfig);
-  } else {
-    const server = createConfiguredServer(client, serverConfig);
-    const stdioTransport = new StdioServerTransport();
-    await server.connect(stdioTransport);
+    // HTTP mode is multi-tenant: each request supplies its own OAuth token
+    // (and optionally its own org) via headers. orgId/cloudOrgId here are
+    // only used as a server-wide fallback when a request omits them.
+    await startHttpServer(port, host, { orgId, cloudOrgId, defaultQueue, defaultProject });
+    return;
   }
+
+  if (!orgId && !cloudOrgId) {
+    process.stderr.write(
+      "Error: You must specify either --org-id <value> / TRACKER_ORG_ID or --cloud-org-id <value> / TRACKER_CLOUD_ORG_ID.\n",
+    );
+    process.exit(1);
+  }
+
+  const token = cliToken ?? (await resolveToken({ clientId, forceAuth: false }));
+  const client = new TrackerClient({ token, orgId, cloudOrgId });
+
+  const defaultAssignee = process.env.TRACKER_USERNAME?.trim() || undefined;
+  const serverConfig: ServerConfig = { defaultAssignee, defaultQueue, defaultProject };
+
+  const server = createConfiguredServer(client, serverConfig);
+  const stdioTransport = new StdioServerTransport();
+  await server.connect(stdioTransport);
 }
 
 main().catch((error: unknown) => {

@@ -1,0 +1,29 @@
+services:
+  yandex-tracker-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: yandex-tracker-mcp
+    restart: unless-stopped
+    # Реальные значения переменных берутся из .env (см. .env.example).
+    # Файл .env опционален — сервер может стартовать вообще без переменных,
+    # т.к. организация и токен приходят per-request от клиента.
+    env_file:
+      - .env
+    environment:
+      # Дефолты уровня процесса (все опциональны). Примеры-плейсхолдеры:
+      #   TRACKER_ORG_ID: "1234567"
+      #   TRACKER_CLOUD_ORG_ID: "aoeg..."
+      #   TRACKER_DEFAULT_QUEUE: "MYQUEUE"
+      #   TRACKER_DEFAULT_PROJECT: "42"
+      TRACKER_ORG_ID: ${TRACKER_ORG_ID:-}
+      TRACKER_CLOUD_ORG_ID: ${TRACKER_CLOUD_ORG_ID:-}
+      TRACKER_DEFAULT_QUEUE: ${TRACKER_DEFAULT_QUEUE:-}
+      TRACKER_DEFAULT_PROJECT: ${TRACKER_DEFAULT_PROJECT:-}
+    # По умолчанию порт 3000 публикуется напрямую по IP сервера — без домена
+    # и без TLS. Личный OAuth-токен идёт в заголовке Authorization в открытом
+    # виде, поэтому такой доступ нужно держать ЗАКРЫТЫМ от публичного интернета:
+    # ограничьте его firewall'ом (allowlist по IP) или сетью VPN.
+    # Если нужен домен + автоматический HTTPS — см. docker-compose.https.yml.
+    ports:
+      - "3000:3000"

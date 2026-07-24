@@ -4,6 +4,13 @@ MCP-сервер для [Yandex Tracker](https://tracker.yandex.ru/) API. Поз
 
 ## Подключение
 
+Сервер можно использовать двумя способами:
+
+- **Локально (stdio)** — клиент сам запускает `npx -y yandex-tracker-mcp` как дочерний процесс. Токен и организация фиксируются один раз в конфиге клиента или локальном auth-файле. Подходит для личного использования на своей машине. Описано ниже в этом разделе.
+- **Удалённо (HTTP)** — сервер поднят один раз на общей инфраструктуре (см. [«Удалённое подключение (HTTP)»](#удалённое-подключение-http)), а каждый клиент подключается по сети под своим личным Yandex-токеном, передаваемым в заголовке запроса. Подходит для команды — не нужно, чтобы у каждого локально стоял Node.js/npx.
+
+### Локальное подключение (stdio)
+
 Порядок одинаковый для любого MCP-клиента:
 
 1. Получить OAuth-токен (один раз, локально).
@@ -157,16 +164,132 @@ codex mcp add yandex-tracker \
 }
 ```
 
+## Удалённое подключение (HTTP)
+
+Вместо запуска `npx` локально сервер можно один раз поднять на своей инфраструктуре (VPS, Docker) и подключаться к нему по сети из нескольких клиентов и машин. Каждый пользователь работает под **своим личным** Yandex-токеном — сервер не хранит общий токен на всех, токен передаётся в заголовке каждого запроса.
+
+### Модель авторизации
+
+- Организация (`TRACKER_ORG_ID`/`TRACKER_CLOUD_ORG_ID`) настраивается один раз на сервере (в `.env`/`docker-compose.yml`) и общая для всей команды.
+- Личный OAuth-токен передаётся в заголовке `Authorization: OAuth <token>` (или `Bearer <token>`) при каждом запросе — сервер не хранит и не резолвит его сам, в отличие от stdio-режима.
+- Имя для дефолтного фильтра `Assignee:` в `search_issues` резолвится автоматически по токену через `/v3/myself` — отдельный заголовок с ФИО не нужен.
+- При желании конкретный запрос может переопределить организацию заголовками `X-Org-Id`/`X-Cloud-Org-Id` (например если сервер обслуживает несколько организаций).
+- Единственный секрет в этой схеме — сам личный Tracker-токен.
+
+### Разворачивание сервера (Docker, по IP без домена)
+
+Основной вариант — без домена и без TLS, сервер публикуется прямо по `http://IP-СЕРВЕРА:3000/mcp`:
+
+1. Скопируйте `.env.example` в `.env`, заполните `TRACKER_ORG_ID` (или `TRACKER_CLOUD_ORG_ID`) и при необходимости `TRACKER_DEFAULT_QUEUE`/`TRACKER_DEFAULT_PROJECT`.
+2. `docker compose up -d --build`.
+
+Сервер начнёт слушать `http://IP-СЕРВЕРА:3000/mcp`.
+
+**Важно:** личный OAuth-токен идёт в заголовке `Authorization` в открытом виде — без TLS его может перехватить любой, кто видит трафик между клиентом и сервером. Такой вариант годится только тогда, когда сервер **не торчит в публичный интернет напрямую** — держите порт 3000 закрытым firewall'ом (allowlist по IP команды) или разворачивайте сервер внутри VPN, доступного только вашей команде.
+
+Если сервер всё же должен быть доступен из открытого интернета, используйте вариант с доменом и HTTPS ниже.
+
+<details>
+<summary>Опционально: HTTPS через домен (или бесплатный sslip.io) вместо голого HTTP</summary>
+
+В репозитории есть `docker-compose.https.yml` и `Caddyfile` — Caddy в роли reverse-proxy с автоматическим HTTPS от Let's Encrypt:
+
+1. В `Caddyfile` замените `mcp.example.com` на реальный домен, у которого A/AAAA-запись указывает на IP сервера. Своего домена нет — подойдёт бесплатный IP-based хост вида `203-0-113-5.sslip.io` (замените точки в вашем IP на дефисы) — Caddy получит для него настоящий сертификат Let's Encrypt без покупки домена.
+2. `docker compose -f docker-compose.https.yml up -d --build` (вместо обычного `docker-compose.yml`).
+
+Сервер начнёт слушать `https://ваш-домен/mcp`, порт 3000 наружу при этом не публикуется — только через Caddy.
+
+</details>
+
+### Получение личного токена
+
+Тот же PKCE-флоу, что и для локального режима — выполняется один раз на своей машине (нужен браузер):
+
+```bash
+npx -y yandex-tracker-mcp --org-id YOUR_ORG_ID --auth
+```
+
+Токен сохранится в `~/.config/yandex-tracker-mcp/token.json` — возьмите значение поля `access_token` и используйте его как значение заголовка `Authorization` в конфиге клиента ниже.
+
+### Конфиг клиента
+
+Ниже — адрес для варианта «по IP без домена» (`http://IP-СЕРВЕРА:3000/mcp`). Если разворачивали опциональный вариант с Caddy/доменом, используйте вместо него `https://ваш-домен/mcp`.
+
+#### Claude Code
+
+```json
+{
+  "mcpServers": {
+    "yandex-tracker": {
+      "type": "http",
+      "url": "http://IP-СЕРВЕРА:3000/mcp",
+      "headers": {
+        "Authorization": "OAuth YOUR_PERSONAL_TOKEN"
+      }
+    }
+  }
+}
+```
+
+Либо через CLI:
+
+```bash
+claude mcp add --transport http yandex-tracker http://IP-СЕРВЕРА:3000/mcp \
+  --header "Authorization: OAuth YOUR_PERSONAL_TOKEN"
+```
+
+#### Codex CLI
+
+`~/.codex/config.toml`:
+
+```toml
+[mcp_servers.yandex-tracker]
+url = "http://IP-СЕРВЕРА:3000/mcp"
+bearer_token_env_var = "TRACKER_OAUTH_TOKEN"
+```
+
+`bearer_token_env_var` — имя переменной окружения, из которой Codex возьмёт токен при старте (например `export TRACKER_OAUTH_TOKEN=YOUR_PERSONAL_TOKEN`), сам токен в файл не пишется.
+
+#### Claude Desktop
+
+`claude_desktop_config.json` не умеет задавать произвольные заголовки для удалённого HTTP-сервера напрямую — используйте локальный stdio-мост [`mcp-remote`](https://www.npmjs.com/package/mcp-remote), который сам прокидывает заголовки на удалённый URL:
+
+```json
+{
+  "mcpServers": {
+    "yandex-tracker": {
+      "command": "npx",
+      "args": [
+        "-y", "mcp-remote",
+        "http://IP-СЕРВЕРА:3000/mcp",
+        "--header", "Authorization: OAuth YOUR_PERSONAL_TOKEN"
+      ]
+    }
+  }
+}
+```
+
+### Проверка
+
+```bash
+curl -i http://IP-СЕРВЕРА:3000/mcp \
+  -H "Authorization: OAuth YOUR_PERSONAL_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+Без заголовка `Authorization` сервер вернёт `401`; без `X-Org-Id`/`X-Cloud-Org-Id` и без серверного дефолта (`TRACKER_ORG_ID`/`TRACKER_CLOUD_ORG_ID` в `.env`) — `400`.
+
 ## Переменные окружения
 
 | Переменная | Назначение |
 |---|---|
-| `TRACKER_ORG_ID` | ID организации Яндекс 360 для бизнеса (заголовок `X-Org-ID`) |
-| `TRACKER_CLOUD_ORG_ID` | ID Yandex Cloud Organization (заголовок `X-Cloud-Org-ID`) |
-| `TRACKER_USERNAME` | Имя и фамилия для автоматического фильтра `Assignee:` в `search_issues`. Опционально |
+| `TRACKER_ORG_ID` | ID организации Яндекс 360 для бизнеса (заголовок `X-Org-ID`). В HTTP-режиме — дефолт, если запрос не передал `X-Org-Id` сам |
+| `TRACKER_CLOUD_ORG_ID` | ID Yandex Cloud Organization (заголовок `X-Cloud-Org-ID`). В HTTP-режиме — дефолт, если запрос не передал `X-Cloud-Org-Id` сам |
+| `TRACKER_USERNAME` | Имя и фамилия для автоматического фильтра `Assignee:` в `search_issues`. Опционально. Используется только в stdio-режиме — в HTTP-режиме резолвится автоматически по токену через `/v3/myself` |
 | `TRACKER_DEFAULT_QUEUE` | Очередь по умолчанию. Используется в `search_issues` (TQL `Queue:`), `create_issue` (поле `queue`), `get_queue_local_fields` (поле `queueKey`). Опционально |
 | `TRACKER_DEFAULT_PROJECT` | Проект по умолчанию. Числовой `shortId`. Используется в `search_issues` (TQL `Project:`), `create_issue` / `update_issue` (поле `project` в формате v3 `{primary:{shortId}}`). Опционально. Нечисловое значение применяется только в TQL-фильтре |
-| `TRACKER_OAUTH_TOKEN` | Опционально. Переопределяет токен из `~/.config/yandex-tracker-mcp/token.json` |
+| `TRACKER_OAUTH_TOKEN` | Опционально. Переопределяет токен из `~/.config/yandex-tracker-mcp/token.json`. Используется только в stdio-режиме — в HTTP-режиме токен всегда берётся из заголовка `Authorization` каждого запроса |
 
 Указывайте ровно один из `TRACKER_ORG_ID` / `TRACKER_CLOUD_ORG_ID` — в зависимости от типа вашей организации.
 
