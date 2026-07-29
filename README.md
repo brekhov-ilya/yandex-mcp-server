@@ -164,6 +164,29 @@ codex mcp add yandex-tracker \
 }
 ```
 
+### Фото и файлы в описании задачи или в комментариях
+
+`upload_attachment` загружает файл (передаётся как base64) в задачу и возвращает `id`, ссылку `content` и готовый markdown-сниппет `markdown` (`![name](url)`). Дальше есть два способа его использовать:
+
+- **Показать инлайн** — вставить `markdown` в `description` (`update_issue`/`create_issue`) или в `text` комментария (`create_comment`/`update_comment`). Картинка отобразится прямо в тексте.
+- **Просто прикрепить** — передать `id` в `attachmentIds` у `create_comment`/`update_comment`. Файл будет показан как вложение под комментарием, без встраивания в текст.
+
+Можно совмещать: передать и `markdown` внутри `text`, и тот же `id` в `attachmentIds`.
+
+```jsonc
+// 1. upload_attachment
+{ "issueKey": "QUEUE-123", "filename": "screenshot.png", "mimeType": "image/png", "data": "<base64>" }
+// → { "id": "123", "content": "https://...", "markdown": "![screenshot.png](https://...)" , ... }
+
+// 2a. Показать в комментарии
+// create_comment
+{ "issueKey": "QUEUE-123", "text": "Вот скриншот бага:\n![screenshot.png](https://...)", "attachmentIds": ["123"] }
+
+// 2b. Показать в описании задачи (существующий текст нужно получить через get_issue и дописать к нему)
+// update_issue
+{ "issueKey": "QUEUE-123", "description": "...текущее описание...\n\n![screenshot.png](https://...)" }
+```
+
 ## Удалённое подключение (HTTP)
 
 Вместо запуска `npx` локально сервер можно один раз поднять на своей инфраструктуре (VPS, Docker) и подключаться к нему по сети из нескольких клиентов и машин. Каждый пользователь работает под **своим личным** Yandex-токеном — сервер не хранит общий токен на всех, токен передаётся в заголовке каждого запроса.
@@ -307,6 +330,7 @@ curl -i http://IP-СЕРВЕРА:3000/mcp \
 | `create_comment` | Добавить комментарий к задаче (с поддержкой `summonees` — упоминаний и `attachmentIds`) |
 | `update_comment` | Отредактировать комментарий (`text`, `summonees`, `attachmentIds`) |
 | `get_attachments` | Получить метаданные вложений (имя, размер, MIME-тип, id) |
+| `upload_attachment` | Загрузить файл (например фото) как вложение к задаче. Возвращает `id` и готовый markdown-сниппет для встраивания в описание/комментарий |
 | `download_attachment` | Скачать вложение в base64. Изображения возвращаются как image-блоки |
 | `get_issue_links` | Получить все связи задачи |
 | `create_issue_link` | Создать связь между задачами (`relates`, `depends on`, `is dependent by`, `duplicates`, `is subtask for` и др.) |

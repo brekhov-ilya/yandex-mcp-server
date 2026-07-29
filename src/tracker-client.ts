@@ -20,6 +20,7 @@ import type {
 	CreateIssueLinkParams,
 	CreateCommentParams,
 	UpdateCommentParams,
+	UploadAttachmentParams,
 } from './types.js';
 
 const BASE_URL = 'https://api.tracker.yandex.net';
@@ -104,6 +105,31 @@ export class TrackerClient {
 
 	async getAttachments(issueKey: string): Promise<TrackerAttachment[]> {
 		return this.request<TrackerAttachment[]>('GET', `/v3/issues/${encodeURIComponent(issueKey)}/attachments`);
+	}
+
+	async uploadAttachment(issueKey: string, params: UploadAttachmentParams): Promise<TrackerAttachment> {
+		const buffer = Buffer.from(params.data, 'base64');
+		const blob = new Blob([buffer], { type: params.mimeType });
+		const formData = new FormData();
+		formData.append('file', blob, params.filename);
+
+		const url = `${BASE_URL}/v3/issues/${encodeURIComponent(issueKey)}/attachments/?filename=${encodeURIComponent(params.filename)}`;
+
+		const response = await fetch(url, {
+			method: 'POST',
+			headers: {
+				Authorization: `OAuth ${this.token}`,
+				...this.orgHeader,
+			},
+			body: formData,
+		});
+
+		if (!response.ok) {
+			const errorBody = await response.text();
+			throw new Error(`Tracker API error ${response.status} on POST /v3/issues/${issueKey}/attachments/: ${errorBody}`);
+		}
+
+		return response.json() as Promise<TrackerAttachment>;
 	}
 
 	async downloadAttachment(issueKey: string, attachmentId: string): Promise<{ content: string; mimeType: string }> {

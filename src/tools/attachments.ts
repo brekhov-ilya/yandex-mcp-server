@@ -34,6 +34,43 @@ export function registerAttachmentTools(
   );
 
   server.registerTool(
+    "upload_attachment",
+    {
+      description:
+        "Upload a file (e.g. a photo) as an attachment to a Yandex Tracker issue. Returns the attachment id plus a ready-to-use markdown snippet. To show the file inline in an issue description or comment, include the returned `markdown` in update_issue's `description` or create_comment's/update_comment's `text`. To just attach it (shown as a file, not inline), pass the returned `id` in create_comment's/update_comment's `attachmentIds`.",
+      inputSchema: z.object({
+        issueKey: z.string().describe("Issue key, e.g. QUEUE-123"),
+        filename: z.string().describe("File name, e.g. screenshot.png"),
+        mimeType: z
+          .string()
+          .describe("MIME type of the file, e.g. image/png, image/jpeg"),
+        data: z.string().describe("Base64-encoded file content"),
+      }),
+    },
+    async ({ issueKey, filename, mimeType, data }) => {
+      const attachment = await client.uploadAttachment(issueKey, {
+        filename,
+        mimeType,
+        data,
+      });
+      const result = {
+        id: attachment.id,
+        name: attachment.name,
+        mimetype: attachment.mimetype,
+        size: attachment.size,
+        content: attachment.content,
+        thumbnail: attachment.thumbnail,
+        markdown: `![${attachment.name}](${attachment.content})`,
+      };
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(result, null, 2) },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
     "download_attachment",
     {
       description:

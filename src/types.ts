@@ -87,11 +87,18 @@ export interface TrackerAttachment {
   id: string;
   name: string;
   content: string;
+  thumbnail?: string;
   mimetype: string;
   size: number;
   createdBy: TrackerUser;
   createdAt: string;
   [key: string]: unknown;
+}
+
+export interface UploadAttachmentParams {
+  filename: string;
+  mimeType: string;
+  data: string;
 }
 
 export interface TrackerLinkDirection {
