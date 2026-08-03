@@ -67,10 +67,6 @@ export class TrackerClient {
 		return response.json() as Promise<T>;
 	}
 
-	async getMyself(): Promise<TrackerUser> {
-		return this.request<TrackerUser>('GET', '/v3/myself');
-	}
-
 	async getIssue(issueKey: string): Promise<TrackerIssue> {
 		return this.request<TrackerIssue>('GET', `/v3/issues/${encodeURIComponent(issueKey)}`);
 	}

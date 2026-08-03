@@ -3,4 +3,3 @@ dist/
 *.tgz
 .idea
 tasks
-.env
